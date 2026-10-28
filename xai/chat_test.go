@@ -2,7 +2,9 @@ package xai
 
 import (
 	"errors"
+	"os"
 	"testing"
+	"time"
 
 	v1 "github.com/deanrie/xai-go/internal/gen/xai/api/v1"
 )
@@ -159,5 +161,25 @@ func TestEmbedRejectsNoInputs(t *testing.T) {
 	}
 	if EmbedText("hi").GetString_() != "hi" {
 		t.Error("EmbedText")
+	}
+}
+
+func TestFilesValidation(t *testing.T) {
+	c, err := New(WithAPIKey("k"), WithInsecure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if _, err := c.Files().UploadBytes(t.Context(), "", []byte("x")); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("empty name: %v", err)
+	}
+	if _, err := c.Files().UploadBytes(t.Context(), "a", []byte("x"), WithExpiresAfter(time.Minute)); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("expires_after below 1h: %v", err)
+	}
+	if _, err := c.Files().ListPage(t.Context(), 0, ListOrder(7), ""); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("bad order: %v", err)
+	}
+	if _, err := c.Files().UploadFile(t.Context(), "/definitely/missing/file"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing path: %v", err)
 	}
 }

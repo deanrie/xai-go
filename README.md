@@ -76,7 +76,8 @@ Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.Err
 | Chat (sample, stream, batch, function tools, multi-output) | done |
 | Chat (deferred, stored completions, server-side tools) | done |
 | Chat (compact context, search parameters, MCP tool options) | planned |
-| Files, Collections, Documents | planned |
+| Files (upload, list, content, delete) | done |
+| Collections, Documents | planned |
 | Embed, Auth | done |
 | Batch | planned |
 | Image, Video, Sample | planned |

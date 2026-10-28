@@ -1,0 +1,254 @@
+package xai
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"iter"
+	"os"
+	"path/filepath"
+	"time"
+
+	"google.golang.org/protobuf/proto"
+
+	v1 "github.com/deanrie/xai-go/internal/gen/xai/api/v1"
+)
+
+// File describes an uploaded file.
+type File = v1.File
+
+// uploadChunkSize matches the Python SDK (3 MiB per stream message).
+const uploadChunkSize = 3 << 20
+
+// Files uploads, lists and downloads files.
+type Files struct{ c *Client }
+
+// Files returns the files service.
+func (c *Client) Files() *Files { return &Files{c: c} }
+
+// UploadOption configures Upload.
+type UploadOption func(*uploadConfig)
+
+type uploadConfig struct {
+	expiresAfter time.Duration
+	onProgress   func(uploaded, total int64)
+}
+
+// WithExpiresAfter sets a time to live measured from the upload, between
+// one hour and thirty days.
+func WithExpiresAfter(d time.Duration) UploadOption {
+	return func(u *uploadConfig) { u.expiresAfter = d }
+}
+
+// WithUploadProgress reports bytes sent after every chunk. total is -1
+// when the size is not known up front.
+func WithUploadProgress(fn func(uploaded, total int64)) UploadOption {
+	return func(u *uploadConfig) { u.onProgress = fn }
+}
+
+// UploadFile uploads the file at path under its base name.
+func (f *Files) UploadFile(ctx context.Context, path string, opts ...UploadOption) (*File, error) {
+	fh, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+	info, err := fh.Stat()
+	if err != nil {
+		return nil, err
+	}
+	return f.upload(ctx, filepath.Base(path), fh, info.Size(), opts)
+}
+
+// UploadBytes uploads in-memory content under the given name.
+func (f *Files) UploadBytes(ctx context.Context, name string, data []byte, opts ...UploadOption) (*File, error) {
+	return f.upload(ctx, name, bytes.NewReader(data), int64(len(data)), opts)
+}
+
+// Upload streams r under the given name. Pass size -1 when unknown.
+func (f *Files) Upload(ctx context.Context, name string, r io.Reader, size int64, opts ...UploadOption) (*File, error) {
+	return f.upload(ctx, name, r, size, opts)
+}
+
+func (f *Files) upload(ctx context.Context, name string, r io.Reader, size int64, opts []UploadOption) (*File, error) {
+	if name == "" {
+		return nil, &ValidationError{Param: "name", Value: name, Accepted: []string{"a non-empty file name"}}
+	}
+	var cfg uploadConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
+	init := &v1.UploadFileInit{Name: name}
+	if cfg.expiresAfter != 0 {
+		if cfg.expiresAfter < time.Hour || cfg.expiresAfter > 30*24*time.Hour {
+			return nil, &ValidationError{Param: "expires_after", Value: cfg.expiresAfter, Accepted: []string{"1h to 720h"}}
+		}
+		init.ExpiresAfter = proto.Int64(int64(cfg.expiresAfter / time.Second))
+	}
+
+	ctx, cancel := f.c.CallContext(ctx)
+	defer cancel()
+	stream, err := v1.NewFilesClient(f.c.conn).UploadFile(ctx)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	if err := stream.Send(&v1.UploadFileChunk{Chunk: &v1.UploadFileChunk_Init{Init: init}}); err != nil {
+		return nil, wrapErr(recvAfterSendError(stream, err))
+	}
+
+	buf := make([]byte, uploadChunkSize)
+	var sent int64
+	for {
+		n, rerr := r.Read(buf)
+		if n > 0 {
+			if err := stream.Send(&v1.UploadFileChunk{Chunk: &v1.UploadFileChunk_Data{Data: buf[:n]}}); err != nil {
+				return nil, wrapErr(recvAfterSendError(stream, err))
+			}
+			sent += int64(n)
+			if cfg.onProgress != nil {
+				cfg.onProgress(sent, size)
+			}
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return nil, rerr
+		}
+	}
+	file, err := stream.CloseAndRecv()
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	return file, nil
+}
+
+// recvAfterSendError turns the io.EOF a client stream returns from Send into
+// the real status the server closed the stream with.
+func recvAfterSendError(stream grpcClientStream, err error) error {
+	if errors.Is(err, io.EOF) {
+		if _, rerr := stream.CloseAndRecv(); rerr != nil {
+			return rerr
+		}
+	}
+	return err
+}
+
+type grpcClientStream interface {
+	CloseAndRecv() (*v1.File, error)
+}
+
+// Get returns a file's metadata.
+func (f *Files) Get(ctx context.Context, fileID string) (*File, error) {
+	ctx, cancel := f.c.CallContext(ctx)
+	defer cancel()
+	file, err := v1.NewFilesClient(f.c.conn).RetrieveFile(ctx, &v1.RetrieveFileRequest{FileId: fileID})
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	return file, nil
+}
+
+// Delete removes a file.
+func (f *Files) Delete(ctx context.Context, fileID string) error {
+	ctx, cancel := f.c.CallContext(ctx)
+	defer cancel()
+	_, err := v1.NewFilesClient(f.c.conn).DeleteFile(ctx, &v1.DeleteFileRequest{FileId: fileID})
+	return wrapErr(err)
+}
+
+// ListOrder selects the sort order of a listing.
+type ListOrder int
+
+// ListOrder values.
+const (
+	Ascending ListOrder = iota
+	Descending
+)
+
+// ListPage is one page of files plus the token for the next one.
+type ListPage struct {
+	Files     []*File
+	NextToken string
+}
+
+// ListPage returns one page of at most limit files (1..100, 0 means the
+// server default of 100) starting at token.
+func (f *Files) ListPage(ctx context.Context, limit int32, order ListOrder, token string) (*ListPage, error) {
+	req := &v1.ListFilesRequest{Limit: limit}
+	switch order {
+	case Ascending:
+		req.Order = v1.Ordering_ASCENDING
+	case Descending:
+		req.Order = v1.Ordering_DESCENDING
+	default:
+		return nil, &ValidationError{Param: "order", Value: order, Accepted: []string{"Ascending", "Descending"}}
+	}
+	if token != "" {
+		req.PaginationToken = proto.String(token)
+	}
+	ctx, cancel := f.c.CallContext(ctx)
+	defer cancel()
+	resp, err := v1.NewFilesClient(f.c.conn).ListFiles(ctx, req)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	return &ListPage{Files: resp.GetData(), NextToken: resp.GetPaginationToken()}, nil
+}
+
+// All iterates over every file, fetching pages as needed. The second value
+// is non-nil only for the final, failed step.
+func (f *Files) All(ctx context.Context, order ListOrder) iter.Seq2[*File, error] {
+	return func(yield func(*File, error) bool) {
+		token := ""
+		for {
+			page, err := f.ListPage(ctx, 0, order, token)
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			for _, file := range page.Files {
+				if !yield(file, nil) {
+					return
+				}
+			}
+			if page.NextToken == "" {
+				return
+			}
+			token = page.NextToken
+		}
+	}
+}
+
+// Content downloads a file's bytes into memory. For large files use
+// ContentTo.
+func (f *Files) Content(ctx context.Context, fileID string) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := f.ContentTo(ctx, fileID, &buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// ContentTo streams a file's bytes into w.
+func (f *Files) ContentTo(ctx context.Context, fileID string, w io.Writer) error {
+	ctx, cancel := f.c.CallContext(ctx)
+	defer cancel()
+	stream, err := v1.NewFilesClient(f.c.conn).RetrieveFileContent(ctx, &v1.RetrieveFileContentRequest{FileId: fileID})
+	if err != nil {
+		return wrapErr(err)
+	}
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return wrapErr(err)
+		}
+		if _, err := w.Write(chunk.GetData()); err != nil {
+			return err
+		}
+	}
+}

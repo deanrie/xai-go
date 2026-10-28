@@ -10,12 +10,14 @@ package conformance
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -329,5 +331,40 @@ func TestStoredCompletion(t *testing.T) {
 	}
 	if _, err := c.GetStoredCompletion(t.Context(), resp.ID()); !errors.Is(err, xai.ErrNotFound) {
 		t.Errorf("after delete: %v", err)
+	}
+}
+
+// tests/sync/files_test.py::test_upload: the test server implements
+// UploadFile only, and echoes the name and the total size.
+func TestFilesUpload(t *testing.T) {
+	c := newClient(t)
+	data := bytes.Repeat([]byte("x"), 4<<20) // two stream chunks
+	var calls int
+	var last int64
+	file, err := c.Files().UploadBytes(t.Context(), "big.bin", data, xai.WithUploadProgress(func(up, total int64) {
+		calls++
+		last = up
+		if total != int64(len(data)) {
+			t.Errorf("total = %d", total)
+		}
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.GetFilename() != "big.bin" || file.GetSize() != int64(len(data)) || file.GetId() == "" {
+		t.Errorf("file = %v", file)
+	}
+	if calls != 2 || last != int64(len(data)) {
+		t.Errorf("progress calls=%d last=%d", calls, last)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.txt")
+	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err = c.Files().UploadFile(t.Context(), path)
+	if err != nil || file.GetFilename() != "note.txt" || file.GetSize() != 5 {
+		t.Errorf("UploadFile: %v %v", file, err)
 	}
 }
