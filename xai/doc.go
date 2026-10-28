@@ -4,7 +4,7 @@
 // on first use, one to management-api.x.ai). Services hang off the client:
 //
 //	client, err := xai.New() // XAI_API_KEY
-//	chat := client.Chat("grok-4").Append(xai.User(xai.Text("hello")))
+//	chat := client.Chat("grok-4.6").Append(xai.User(xai.Text("hello")))
 //	resp, err := chat.Sample(ctx)
 //
 // Every call takes a context.Context. When the context carries no deadline

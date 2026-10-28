@@ -22,7 +22,7 @@ func main() {
 
 	weather := xai.FunctionTool("get_weather", "Current weather for a city",
 		`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`)
-	chat := client.Chat("grok-4", xai.WithTools(weather))
+	chat := client.Chat("grok-4.6", xai.WithTools(weather))
 	chat.Append(xai.User(xai.Text("What is the weather in London right now?")))
 
 	ctx := context.Background()

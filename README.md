@@ -45,7 +45,7 @@ func main() {
 Chat:
 
 ```go
-chat := client.Chat("grok-4", xai.WithMaxTokens(200), xai.WithReasoningEffort(xai.ReasoningEffortLow))
+chat := client.Chat("grok-4.6", xai.WithMaxTokens(200), xai.WithReasoningEffort(xai.ReasoningEffortLow))
 chat.Append(xai.System("Answer in one sentence.")).Append(xai.User(xai.Text("Why is the sky blue?")))
 
 resp, err := chat.Sample(ctx)          // one response
@@ -81,7 +81,7 @@ batch, err = client.Batches().Wait(ctx, batch.GetBatchId(), xai.PollOptions{Time
 for result, err := range client.Batches().Results(ctx, batch.GetBatchId()) { /* result.Chat, result.Err */ }
 
 vectors, err := client.Embed().Embed(ctx, "grok-embed", xai.EmbedText("hello"))
-tokens, err := client.Tokenize().TokenizeText(ctx, "hello", "grok-4")
+tokens, err := client.Tokenize().TokenizeText(ctx, "hello", "grok-4.6")
 key, err := client.Auth().GetAPIKeyInfo(ctx)
 ```
 
@@ -93,7 +93,7 @@ Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.Err
 
 ## Examples
 
-`examples/chat`, `examples/stream` and `examples/tools` are small programs against the real API; each needs `XAI_API_KEY`:
+`examples/chat`, `examples/stream` and `examples/tools` are small programs against the real API; each needs `XAI_API_KEY`. The whole client was exercised against `api.x.ai` with a real key (auth, models, tokenize, chat sample/stream/tools/JSON/deferred, embeddings, files, image generation, batches, error mapping); `grok-4` resolves to a current internal build, so the examples name `grok-4.6` explicitly:
 
 ```sh
 XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"

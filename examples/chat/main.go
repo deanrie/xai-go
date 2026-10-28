@@ -24,7 +24,7 @@ func main() {
 	}
 	defer client.Close()
 
-	chat := client.Chat("grok-4", xai.WithMaxTokens(300))
+	chat := client.Chat("grok-4.6", xai.WithMaxTokens(300))
 	chat.Append(xai.System("Answer in two sentences.")).Append(xai.User(xai.Text(question)))
 
 	resp, err := chat.Sample(context.Background())

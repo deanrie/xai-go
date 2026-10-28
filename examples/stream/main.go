@@ -18,7 +18,7 @@ func main() {
 	}
 	defer client.Close()
 
-	chat := client.Chat("grok-4").Append(xai.User(xai.Text("Tell me a short story about a lighthouse keeper.")))
+	chat := client.Chat("grok-4.6").Append(xai.User(xai.Text("Tell me a short story about a lighthouse keeper.")))
 	stream := chat.Stream(context.Background())
 	for _, chunk := range stream.All() {
 		fmt.Print(chunk.Content())

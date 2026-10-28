@@ -24,7 +24,7 @@ func ExampleChat_Sample() {
 	}
 	defer client.Close()
 
-	chat := client.Chat("grok-4", xai.WithMaxTokens(100))
+	chat := client.Chat("grok-4.6", xai.WithMaxTokens(100))
 	chat.Append(xai.System("Answer in one sentence."))
 	chat.Append(xai.User(xai.Text("Why is the sky blue?")))
 
@@ -42,7 +42,7 @@ func ExampleChat_Stream() {
 	}
 	defer client.Close()
 
-	chat := client.Chat("grok-4").Append(xai.User(xai.Text("Tell me a story.")))
+	chat := client.Chat("grok-4.6").Append(xai.User(xai.Text("Tell me a story.")))
 	stream := chat.Stream(context.Background())
 	for _, chunk := range stream.All() {
 		fmt.Print(chunk.Content())
@@ -61,7 +61,7 @@ func ExampleChat_Sample_toolCalls() {
 
 	weather := xai.FunctionTool("get_weather", "Current weather for a city",
 		`{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}`)
-	chat := client.Chat("grok-4", xai.WithTools(weather))
+	chat := client.Chat("grok-4.6", xai.WithTools(weather))
 	chat.Append(xai.User(xai.Text("What is the weather in London?")))
 
 	ctx := context.Background()
