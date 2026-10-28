@@ -509,3 +509,20 @@ func TestBatches(t *testing.T) {
 		t.Errorf("Add with no requests: %v", err)
 	}
 }
+
+// tests/sync/documents_test.py: the server keys matches on the query and
+// honours the limit.
+func TestDocumentsSearch(t *testing.T) {
+	c := newClient(t)
+	matches, err := c.Documents().Search(t.Context(), "test-query-1", []string{"col-1"})
+	if err != nil || len(matches) != 2 || matches[0].GetChunkId() != "test-chunk-1" {
+		t.Fatalf("Search: %v %v", matches, err)
+	}
+	matches, err = c.Documents().Search(t.Context(), "anything", []string{"col-1"}, xai.WithSearchLimit(1), xai.WithHybridRetrieval(xai.Reranker("", "prefer recent"), 3))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("Search with limit: %v %v", matches, err)
+	}
+	if _, err := c.Documents().Search(t.Context(), "q", nil); !errors.Is(err, xai.ErrInvalidArgument) {
+		t.Errorf("no collections: %v", err)
+	}
+}
