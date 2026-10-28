@@ -170,5 +170,3 @@ func chatResponseAttrs(pb *v1.GetChatCompletionResponse) []attribute.KeyValue {
 	}
 	return attrs
 }
-
-func spanFrom(ctx context.Context) trace.Span { return trace.SpanFromContext(ctx) }

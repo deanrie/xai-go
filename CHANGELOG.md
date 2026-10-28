@@ -1,6 +1,6 @@
 # Changelog
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The module is pre-release; until v0.1.0 any minor version may change the API.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The module is pre-release; until v0.1.0 any minor version may change the API. v0.1.0 is tagged on our own readiness; the open xai-proto items (#82, #83) only decide where the stubs are generated from.
 
 ## [Unreleased]
 
