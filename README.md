@@ -105,7 +105,7 @@ Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.Err
 | Image (generate, batch, url or base64, edit inputs) | done |
 | Video (start, poll, wait, extend) | done |
 | Batch (create, add, wait, results, cancel) | done |
-| Collections | blocked: `collections.proto` is not published in xai-proto (only compiled into xai-sdk-python) |
+| Collections | blocked: `collections.proto` is not published in xai-proto, see [xai-proto#83](https://github.com/xai-org/xai-proto/issues/83) |
 | Documents (search with semantic, keyword, hybrid retrieval) | done |
 | Sample (legacy) | not planned |
 
