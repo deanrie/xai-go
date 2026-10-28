@@ -91,6 +91,14 @@ Options: `xai.WithAPIKey`, `xai.WithAPIHost`, `xai.WithTimeout`, `xai.WithMetada
 
 Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.ErrNotFound)` and the other sentinels work across the whole SDK. Arguments outside the accepted values fail before the request is sent with `*xai.ValidationError`, never with a silent fallback.
 
+## Examples
+
+`examples/chat`, `examples/stream` and `examples/tools` are small programs against the real API; each needs `XAI_API_KEY`:
+
+```sh
+XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
+```
+
 ## Status
 
 | Service | State |
