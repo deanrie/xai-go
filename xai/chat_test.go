@@ -1,6 +1,7 @@
 package xai
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -176,7 +177,7 @@ func TestFilesValidation(t *testing.T) {
 	if _, err := c.Files().UploadBytes(t.Context(), "", []byte("x")); !errors.Is(err, ErrInvalidArgument) {
 		t.Errorf("empty name: %v", err)
 	}
-	if _, err := c.Files().UploadBytes(t.Context(), "a", []byte("x"), WithExpiresAfter(time.Minute)); !errors.Is(err, ErrInvalidArgument) {
+	if _, err := c.Files().UploadBytes(t.Context(), "a", []byte("x"), WithUploadExpiresAfter(time.Minute)); !errors.Is(err, ErrInvalidArgument) {
 		t.Errorf("expires_after below 1h: %v", err)
 	}
 	if _, err := c.Files().ListPage(t.Context(), 0, ListOrder(7), ""); !errors.Is(err, ErrInvalidArgument) {
@@ -414,5 +415,60 @@ func TestErrorStatusAndRetryable(t *testing.T) {
 	}
 	if ErrNotFound.Retryable() || ErrNotFound.Status() != nil {
 		t.Error("sentinel")
+	}
+}
+
+// cancelingChunkStream yields one chunk, then reports the context cancel
+// the way a gRPC stream does once its context is done.
+type cancelingChunkStream struct {
+	v1.Chat_GetCompletionChunkClient
+	cancel context.CancelFunc
+	sent   bool
+}
+
+func (s *cancelingChunkStream) Recv() (*v1.GetChatCompletionChunk, error) {
+	if !s.sent {
+		s.sent = true
+		return chunk("c", "first"), nil
+	}
+	s.cancel()
+	return nil, status.Error(codes.Canceled, "context canceled")
+}
+
+func TestChatStreamStopsWhenTheContextIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	s := &ChatStream{
+		stream:   &cancelingChunkStream{cancel: cancel},
+		cancel:   cancel,
+		response: newResponse(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{}}}, 0),
+	}
+	n := 0
+	for range s.All() {
+		n++
+		if n > 5 {
+			t.Fatal("stream did not stop after the cancel")
+		}
+	}
+	if n != 1 || !errors.Is(s.Err(), ErrCanceled) || ctx.Err() == nil {
+		t.Fatalf("chunks=%d err=%v ctx=%v", n, s.Err(), ctx.Err())
+	}
+	if s.Response().Content() != "first" {
+		t.Error("partial content lost on cancel")
+	}
+	// Breaking out of the range early also runs the cancel.
+	s2 := &ChatStream{
+		stream:   &fakeChunkStream{chunks: []*v1.GetChatCompletionChunk{chunk("d", "a"), chunk("d", "b"), chunk("d", "c")}},
+		cancel:   func() { n = -1 },
+		response: newResponse(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{}}}, 0),
+	}
+	for range s2.All() {
+		break
+	}
+	if n != -1 || s2.Err() != nil {
+		t.Errorf("early break: cancel ran=%v err=%v", n == -1, s2.Err())
+	}
+	for range s2.All() {
+		t.Fatal("stream yielded after an early break")
 	}
 }

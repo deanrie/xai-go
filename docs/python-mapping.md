@@ -20,7 +20,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `tool(...)`, `web_search(...)`, `x_search(...)`, `code_execution()`, `collections_search(...)`, `mcp(...)` | `FunctionTool(...)`, `WebSearchTool(...)`, `XSearchTool(...)`, `CodeExecutionTool()`, `CollectionsSearchTool(...)`, `MCPTool(...)` |
 | `files.upload(path_or_bytes, filename=...)` | `Files.UploadFile(ctx, path)`, `Files.UploadBytes(ctx, name, data)`, `Files.Upload(ctx, name, r, size)` |
 | `files.batch_upload(files, batch_size)` | `Files.UploadAll(ctx, paths, concurrency, opts...)` (results in input order, per-file errors) |
-| `files.list(...)` | `Files.ListPage(ctx, limit, order, token)`, `Files.All(ctx, order)` |
+| `files.list(...)` | `Files.ListPage(ctx, limit, order, token)`; `Files.All(ctx, order)` walks every page, so bound its context on large accounts |
 | `files.get(id)` | `Files.Get(ctx, id)` |
 | `files.delete(id)` | `Files.Delete(ctx, id)` |
 | `files.content(id)` | `Files.Content(ctx, id)`, `Files.ContentTo(ctx, id, w)` |
@@ -43,7 +43,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `tokenizer.tokenize_text(text, model)` | `Tokenize.TokenizeText(ctx, text, model)` |
 | `auth.get_api_key_info()` | `Auth.GetAPIKeyInfo(ctx)` |
 | (no Python client for the `Embedder` service) | `Embed.Embed(ctx, model, inputs...)`, `Embed.EmbedBase64(...)` |
-| `collections.create(name, ...)` | `Collections.Create(ctx, name, opts...)` |
+| `collections.create(name, ...)` | `Collections.Create(ctx, name, opts...)` (Collections is experimental: generated from recovered protos until xai-org/xai-proto#83 is resolved) |
 | `collections.list(...)`, `.get(id)`, `.update(id, ...)`, `.delete(id)` | `Collections.All(ctx, order)`, `.Get`, `.Update(ctx, id, opts...)`, `.Delete` |
 | `collections.search(query, collection_ids, ...)` | `Documents.Search(ctx, query, collectionIDs, opts...)` |
 | `collections.upload_document(id, data, name, fields)` | `Collections.UploadDocument(ctx, id, name, data, fields, poll)` |

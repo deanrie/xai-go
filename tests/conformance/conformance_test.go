@@ -34,7 +34,7 @@ const (
 	serverStartup        = 60 * time.Second
 )
 
-var serverAddr, managementAddr, flakyAddr, flakyAddr2 string
+var serverAddr, managementAddr, flakyAddr, flakyAddr2, slowAddr string
 
 func TestMain(m *testing.M) {
 	dir := os.Getenv("XAI_SDK_PYTHON_DIR")
@@ -71,7 +71,7 @@ func TestMain(m *testing.M) {
 			if ok && (strings.HasSuffix(k, "port") || strings.HasSuffix(k, "port_2")) {
 				ports[k] = v
 			}
-			if len(ports) == 4 {
+			if len(ports) == 5 {
 				portCh <- ports
 				break
 			}
@@ -85,6 +85,7 @@ func TestMain(m *testing.M) {
 		managementAddr = "127.0.0.1:" + ports["mgmt_port"]
 		flakyAddr = "127.0.0.1:" + ports["flaky_port"]
 		flakyAddr2 = "127.0.0.1:" + ports["flaky_port_2"]
+		slowAddr = "127.0.0.1:" + ports["slow_port"]
 	case <-time.After(serverStartup):
 		_ = cmd.Process.Kill()
 		panic("conformance: test server did not report its ports")
@@ -564,7 +565,7 @@ func TestChatCompact(t *testing.T) {
 func TestCollections(t *testing.T) {
 	c := newClient(t)
 	cs := c.Collections()
-	col, err := cs.Create(t.Context(), "go-conformance", xai.WithCollectionDescription("docs"), xai.WithChunking(xai.ChunkByChars(500, 50)), xai.WithMetric(xai.MetricCosine))
+	col, err := cs.Create(t.Context(), "go-conformance", xai.WithCollectionDescription("docs"), xai.WithCollectionChunking(xai.ChunkByChars(500, 50)), xai.WithCollectionMetric(xai.MetricCosine))
 	if err != nil || col.GetCollectionId() == "" {
 		t.Fatalf("Create: %v %v", col, err)
 	}
@@ -820,5 +821,49 @@ func TestChatEncryptedContent(t *testing.T) {
 	msgs := chat.Messages()
 	if last := msgs[len(msgs)-1]; last.GetEncryptedContent() != "test encrypted content" || last.GetReasoningContent() != "test reasoning content" {
 		t.Errorf("appended message = %v", last)
+	}
+}
+
+// tests/sync/client_test.py::test_timeout_unary_unary: the client timeout
+// bounds a call the server answers too late.
+func TestClientTimeoutUnary(t *testing.T) {
+	c := newClient(t, xai.WithAPIHost(slowAddr), xai.WithTimeout(500*time.Millisecond))
+	start := time.Now()
+	_, err := c.Chat("grok-4.6").Append(xai.User(xai.Text("hi"))).Sample(context.Background())
+	if !errors.Is(err, xai.ErrDeadlineExceeded) {
+		t.Fatalf("want ErrDeadlineExceeded, got %v", err)
+	}
+	if d := time.Since(start); d > 1500*time.Millisecond {
+		t.Errorf("took %v, the 500 ms timeout did not bound the call", d)
+	}
+}
+
+// tests/sync/client_test.py::test_timeout_unary_stream: a stream that never
+// starts within the timeout ends with the deadline error and no chunks.
+func TestClientTimeoutStream(t *testing.T) {
+	c := newClient(t, xai.WithAPIHost(slowAddr), xai.WithTimeout(500*time.Millisecond))
+	stream := c.Chat("grok-4.6").Append(xai.User(xai.Text("hi"))).Stream(context.Background())
+	n := 0
+	for range stream.All() {
+		n++
+	}
+	if !errors.Is(stream.Err(), xai.ErrDeadlineExceeded) {
+		t.Fatalf("want ErrDeadlineExceeded, got %v", stream.Err())
+	}
+	if n != 0 || stream.Response() == nil {
+		t.Errorf("chunks=%d response=%v", n, stream.Response())
+	}
+}
+
+// A caller deadline on ctx wins over the client timeout.
+func TestCallerDeadlineOnStream(t *testing.T) {
+	c := newClient(t, xai.WithAPIHost(slowAddr))
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	stream := c.Chat("grok-4.6").Append(xai.User(xai.Text("hi"))).Stream(ctx)
+	for range stream.All() {
+	}
+	if !errors.Is(stream.Err(), xai.ErrDeadlineExceeded) {
+		t.Fatalf("want ErrDeadlineExceeded, got %v", stream.Err())
 	}
 }

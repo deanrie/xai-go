@@ -36,9 +36,9 @@ type uploadConfig struct {
 	onProgress   func(uploaded, total int64)
 }
 
-// WithExpiresAfter sets a time to live measured from the upload, between
+// WithUploadExpiresAfter sets a time to live measured from the upload, between
 // one hour and thirty days.
-func WithExpiresAfter(d time.Duration) UploadOption {
+func WithUploadExpiresAfter(d time.Duration) UploadOption {
 	return func(u *uploadConfig) { u.expiresAfter = d }
 }
 
@@ -199,7 +199,9 @@ func (f *Files) ListPage(ctx context.Context, limit int32, order ListOrder, toke
 }
 
 // All iterates over every file, fetching pages as needed. The second value
-// is non-nil only for the final, failed step.
+// is non-nil only for the final, failed step. It walks the whole account:
+// one with thousands of files takes minutes, so bound ctx or use ListPage
+// when you only need the newest entries.
 func (f *Files) All(ctx context.Context, order ListOrder) iter.Seq2[*File, error] {
 	return func(yield func(*File, error) bool) {
 		token := ""

@@ -68,6 +68,7 @@ Other services follow the same shape:
 ```go
 file, err := client.Files().UploadFile(ctx, "report.pdf")
 data, err := client.Files().Content(ctx, file.GetId())
+page, err := client.Files().ListPage(ctx, 100, xai.Descending, "") // Files().All walks every page; large accounts have thousands
 
 img, err := client.Images().Generate(ctx, "grok-imagine", "a lighthouse at dusk", xai.WithImageAspectRatio("16:9"))
 url, err := img.URL()
@@ -113,7 +114,7 @@ XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
 | Image (generate, batch, url or base64, edit inputs) | done |
 | Video (start, poll, wait, extend) | done |
 | Batch (chat, image and video requests; create, add, wait, results, cancel) | done |
-| Collections (create, update, list, documents, upload and wait, update document, batch get, delete) | done, from recovered protos (see below) |
+| Collections (create, update, list, documents, upload and wait, update document, batch get, delete) | experimental: generated from recovered protos until [xai-proto#83](https://github.com/xai-org/xai-proto/issues/83) is resolved; the Go API may change when the upstream file lands |
 | Documents (search with semantic, keyword, hybrid retrieval) | done |
 | Sample (legacy) | not planned |
 

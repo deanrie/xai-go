@@ -104,18 +104,18 @@ func WithCollectionDescription(s string) CollectionOption {
 	return func(c *createCollection) { c.pb.CollectionDescription = proto.String(s) }
 }
 
-// WithEmbeddingModel sets the embedding model of the index.
-func WithEmbeddingModel(model string) CollectionOption {
+// WithCollectionEmbeddingModel sets the embedding model of the index.
+func WithCollectionEmbeddingModel(model string) CollectionOption {
 	return func(c *createCollection) { c.pb.IndexConfiguration = &rag.IndexConfiguration{ModelName: model} }
 }
 
-// WithChunking sets how documents are split; see ChunkByChars and friends.
-func WithChunking(cfg *ChunkConfiguration) CollectionOption {
+// WithCollectionChunking sets how documents are split; see ChunkByChars and friends.
+func WithCollectionChunking(cfg *ChunkConfiguration) CollectionOption {
 	return func(c *createCollection) { c.pb.ChunkConfiguration = cfg }
 }
 
-// WithMetric sets the vector distance.
-func WithMetric(m HNSWMetric) CollectionOption {
+// WithCollectionMetric sets the vector distance.
+func WithCollectionMetric(m HNSWMetric) CollectionOption {
 	return func(c *createCollection) {
 		v, ok := hnswMetricValues[m]
 		if !ok {
@@ -128,18 +128,23 @@ func WithMetric(m HNSWMetric) CollectionOption {
 	}
 }
 
-// WithFieldDefinitions declares the metadata fields of the collection.
-func WithFieldDefinitions(defs ...*FieldDefinition) CollectionOption {
+// WithCollectionFieldDefinitions declares the metadata fields of the collection.
+func WithCollectionFieldDefinitions(defs ...*FieldDefinition) CollectionOption {
 	return func(c *createCollection) { c.pb.FieldDefinitions = defs }
 }
 
-// WithTeamID scopes the call to a team the management key can act for.
-func WithTeamID(teamID string) CollectionOption {
+// WithCollectionTeamID scopes the call to a team the management key can act for.
+func WithCollectionTeamID(teamID string) CollectionOption {
 	return func(c *createCollection) { c.pb.TeamId = proto.String(teamID) }
 }
 
 // Collections manages collections and their documents over the management
 // API; search goes through Documents.
+//
+// Experimental: the protos behind this service are not published in
+// xai-proto yet (xai-org/xai-proto#83) and are generated from descriptors
+// recovered from the Python SDK. The Go API here may change when the
+// upstream file lands.
 type Collections struct{ c *Client }
 
 // Collections returns the collections service. It needs a management API key
@@ -204,7 +209,8 @@ func (cs *Collections) Delete(ctx context.Context, collectionID string) error {
 	return wrapErr(err)
 }
 
-// All iterates over every collection, fetching pages as needed.
+// All iterates over every collection, fetching pages as needed. It walks
+// the whole list; bound ctx on accounts with many collections.
 func (cs *Collections) All(ctx context.Context, order ListOrder) iter.Seq2[*CollectionMetadata, error] {
 	return func(yield func(*CollectionMetadata, error) bool) {
 		stub, err := cs.stub()

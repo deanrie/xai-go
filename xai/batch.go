@@ -138,7 +138,8 @@ func (b *Batches) Wait(ctx context.Context, batchID string, opts PollOptions) (*
 }
 
 // All iterates over every batch, newest pages first as the server orders
-// them. The error, if any, is yielded last.
+// them. The error, if any, is yielded last. It walks the whole list; bound
+// ctx on accounts with many batches.
 func (b *Batches) All(ctx context.Context) iter.Seq2[*Batch, error] {
 	return func(yield func(*Batch, error) bool) {
 		client := v1.NewBatchMgmtClient(b.c.conn)
