@@ -758,3 +758,28 @@ func TestFilesUploadAll(t *testing.T) {
 		t.Errorf("missing file: %v", results[5].Err)
 	}
 }
+
+// tests/sync/chat_test.py::test_parse: a JSON schema request gets a JSON
+// answer that decodes into the caller's value; a mismatched value is a
+// *xai.JSONError that still carries the Response.
+func TestChatSampleJSON(t *testing.T) {
+	c := newClient(t)
+	var weather struct {
+		City        string  `json:"city"`
+		Units       string  `json:"units"`
+		Temperature float64 `json:"temperature"`
+	}
+	resp, err := c.Chat("grok-4").Append(xai.User(xai.Text("weather?"))).SampleJSON(t.Context(), `{"type":"object"}`, &weather)
+	if err != nil || weather.City != "London" || weather.Temperature != 20 {
+		t.Fatalf("SampleJSON: %+v %v", weather, err)
+	}
+	if resp.Proto().GetOutputs()[0].GetFinishReason().String() != "REASON_STOP" {
+		t.Errorf("finish reason: %v", resp.FinishReason())
+	}
+	var wrong []string
+	resp, err = c.Chat("grok-4").Append(xai.User(xai.Text("weather?"))).SampleJSON(t.Context(), `{"type":"array"}`, &wrong)
+	var jerr *xai.JSONError
+	if !errors.As(err, &jerr) || resp == nil || !strings.HasPrefix(jerr.Content, "{") {
+		t.Fatalf("want JSONError with the response, got %v %v", resp, err)
+	}
+}

@@ -24,6 +24,29 @@ func (e *Error) Error() string {
 // Unwrap returns the underlying gRPC status error.
 func (e *Error) Unwrap() error { return e.err }
 
+// Status returns the gRPC status, including any details the server attached
+// (google.rpc.ErrorInfo, BadRequest, RetryInfo), or nil for an Error built
+// without one.
+func (e *Error) Status() *status.Status {
+	if e.err == nil {
+		return nil
+	}
+	st, _ := status.FromError(e.err)
+	return st
+}
+
+// Retryable reports whether the call is worth repeating as is: UNAVAILABLE
+// (the client already retries it up to five times), RESOURCE_EXHAUSTED and
+// DEADLINE_EXCEEDED.
+func (e *Error) Retryable() bool {
+	switch e.Code {
+	case codes.Unavailable, codes.ResourceExhausted, codes.DeadlineExceeded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Is lets errors.Is match an *Error against the sentinel errors by code.
 func (e *Error) Is(target error) bool {
 	t, ok := target.(*Error)

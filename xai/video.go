@@ -122,6 +122,19 @@ func WithVideoImage(img *Content) VideoOption {
 	}
 }
 
+// WithVideoStorage stores the generated video in the Files API; the result
+// is on VideoResponse.GetVideo().GetFileOutput().
+func WithVideoStorage(o StorageOptions) VideoOption {
+	return func(r *videoRequest) {
+		pb, err := o.proto()
+		if err != nil {
+			r.fail(err)
+			return
+		}
+		r.pb.StorageOptions = pb
+	}
+}
+
 // WithVideoInput edits the given video (video-to-video).
 func WithVideoInput(src *VideoSource) VideoOption {
 	return func(r *videoRequest) { r.pb.Video = src }

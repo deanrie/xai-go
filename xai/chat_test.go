@@ -384,3 +384,35 @@ func TestBatchImageAndVideoRequests(t *testing.T) {
 		t.Errorf("bad resolution: %v", err)
 	}
 }
+
+func TestStorageOptionsValidation(t *testing.T) {
+	if _, err := (StorageOptions{}).proto(); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("empty filename: %v", err)
+	}
+	if _, err := (StorageOptions{Filename: "a.png", ExpiresAfter: time.Minute}).proto(); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("short expiry: %v", err)
+	}
+	pb, err := (StorageOptions{Filename: "a.png", ExpiresAfter: 2 * time.Hour, PublicURL: true}).proto()
+	if err != nil || pb.GetFilename() != "a.png" || pb.GetExpiresAfter() != 7200 || pb.GetPublicUrl() == nil || pb.GetPublicUrl().ExpiresAfter != nil {
+		t.Errorf("proto: %v %v", pb, err)
+	}
+	c, _ := New(WithAPIKey("k"), WithInsecure())
+	defer c.Close()
+	if _, err := c.Images().Generate(t.Context(), "m", "p", WithImageStorage(StorageOptions{})); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("image storage without filename: %v", err)
+	}
+	if _, err := c.Videos().Start(t.Context(), "m", "p", WithVideoStorage(StorageOptions{})); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("video storage without filename: %v", err)
+	}
+}
+
+func TestErrorStatusAndRetryable(t *testing.T) {
+	err := wrapErr(status.Error(codes.ResourceExhausted, "slow down"))
+	var e *Error
+	if !errors.As(err, &e) || !e.Retryable() || e.Status() == nil || e.Status().Code() != codes.ResourceExhausted {
+		t.Errorf("wrapped: %+v", err)
+	}
+	if ErrNotFound.Retryable() || ErrNotFound.Status() != nil {
+		t.Error("sentinel")
+	}
+}

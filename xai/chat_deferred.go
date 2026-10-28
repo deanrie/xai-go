@@ -2,8 +2,11 @@ package xai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+
+	"google.golang.org/protobuf/proto"
 
 	v1 "github.com/deanrie/xai-go/internal/gen/xai/api/v1"
 )
@@ -133,3 +136,42 @@ func (ch *Chat) Compact(ctx context.Context) (*CompactContextResponse, error) {
 	ch.req.Messages = []*Message{{Role: v1.MessageRole_ROLE_USER, EncryptedContent: resp.GetEncryptedContent()}}
 	return resp, nil
 }
+
+// SampleJSON samples one completion constrained to the JSON schema and
+// decodes the answer into out, the Go equivalent of the Python SDK's
+// chat.parse. The schema is a JSON Schema document; callers who generate it
+// from a struct can use any schema library. A reply that is not valid JSON
+// for out is returned as *JSONError together with the Response.
+func (ch *Chat) SampleJSON(ctx context.Context, schema string, out any) (*Response, error) {
+	if ch.err != nil {
+		return nil, ch.err
+	}
+	req := proto.Clone(ch.req).(*v1.GetCompletionsRequest)
+	req.N = proto.Int32(1)
+	req.ResponseFormat = &v1.ResponseFormat{FormatType: v1.FormatType_FORMAT_TYPE_JSON_SCHEMA, Schema: proto.String(schema)}
+	ctx, cancel := ch.c.CallContext(ctx)
+	defer cancel()
+	pb, err := v1.NewChatClient(ch.c.conn).GetCompletion(ctx, req)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	resp := newResponse(pb, autoDetectMultiOutput(ch.initialIndex(), outputIndexes(pb.GetOutputs())))
+	if err := json.Unmarshal([]byte(resp.Content()), out); err != nil {
+		return resp, &JSONError{Content: resp.Content(), Err: err}
+	}
+	return resp, nil
+}
+
+// JSONError is returned by SampleJSON when the model's answer does not
+// decode into the requested value.
+type JSONError struct {
+	Content string
+	Err     error
+}
+
+func (e *JSONError) Error() string {
+	return "xai: response is not the requested JSON: " + e.Err.Error()
+}
+
+// Unwrap returns the json decoding error.
+func (e *JSONError) Unwrap() error { return e.Err }

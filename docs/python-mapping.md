@@ -11,7 +11,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `chat.stream()` | `Chat.Stream(ctx)` then `for resp, chunk := range stream.All()` |
 | `chat.stream_batch(n)` | `Chat.StreamBatch(ctx, n)` then `for resps, chunks := range stream.All()` |
 | `chat.defer()`, `chat.defer_batch(n)` | `Chat.Defer(ctx, poll)`, `Chat.DeferBatch(ctx, n, poll)` |
-| `chat.parse(Model)` | `WithJSONSchema(schema)` and `json.Unmarshal(resp.Content())` |
+| `chat.parse(Model)` | `Chat.SampleJSON(ctx, schema, &out)` (or `WithJSONSchema` and your own decode) |
 | `chat.compact()`, `chat.compact_context()` | `Chat.Compact(ctx)`, `Chat.CompactContext(ctx)` |
 | `chat.get_stored_completion(id)` | `Client.GetStoredCompletion(ctx, id)` |
 | `chat.delete_stored_completion(id)` | `Client.DeleteStoredCompletion(ctx, id)` |
@@ -61,5 +61,7 @@ Differences worth knowing:
 - Errors: the Python SDK raises `grpc.RpcError`; here every API failure is `*Error` with the gRPC `Code`, and `errors.Is(err, xai.ErrNotFound)` works. Invalid literals fail before the request with `*ValidationError`.
 - Polling (`defer`, video, batch, document indexing) takes `PollOptions`; the zero value is a 1 s interval and a 10 min timeout, and the timeout is `ErrPollTimeout`.
 - `Image.URL()` and `Image.Base64()` distinguish "returned in the other format" (`ErrImageFormat`) from "withheld by moderation" (`ErrImageModerated`); the Python SDK raises `ValueError` for both.
+- `*Error` exposes `Status()` for server-attached details and `Retryable()`; the Python SDK leaves that to `grpc.RpcError`.
+- Image and video storage (`storage_options`) is `WithImageStorage` / `WithVideoStorage` with a `StorageOptions` value.
 - Telemetry (OpenTelemetry spans) is not implemented.
 - `Sample` (the legacy sampling service) is not planned.

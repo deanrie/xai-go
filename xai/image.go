@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/proto"
@@ -178,6 +179,53 @@ func WithReferenceImages(imgs ...*Content) ImageOption {
 	}
 }
 
+// StorageOptions asks the API to keep a generated image or video in the
+// Files API as well as returning it. ExpiresAfter and PublicURLExpiresAfter
+// are zero for the server defaults; otherwise one hour to thirty days.
+type StorageOptions struct {
+	Filename              string
+	ExpiresAfter          time.Duration
+	PublicURL             bool
+	PublicURLExpiresAfter time.Duration
+}
+
+func (o StorageOptions) proto() (*v1.StorageOptions, error) {
+	if o.Filename == "" {
+		return nil, &ValidationError{Param: "storage.filename", Value: "", Accepted: []string{"a non-empty file name"}}
+	}
+	out := &v1.StorageOptions{Filename: o.Filename}
+	if o.ExpiresAfter != 0 {
+		if o.ExpiresAfter < time.Hour || o.ExpiresAfter > 30*24*time.Hour {
+			return nil, &ValidationError{Param: "storage.expires_after", Value: o.ExpiresAfter, Accepted: []string{"1h to 720h"}}
+		}
+		out.ExpiresAfter = proto.Int64(int64(o.ExpiresAfter / time.Second))
+	}
+	if o.PublicURL {
+		pu := &v1.PublicUrlOptions{}
+		if o.PublicURLExpiresAfter != 0 {
+			if o.PublicURLExpiresAfter < time.Hour || o.PublicURLExpiresAfter > 30*24*time.Hour {
+				return nil, &ValidationError{Param: "storage.public_url.expires_after", Value: o.PublicURLExpiresAfter, Accepted: []string{"1h to 720h"}}
+			}
+			pu.ExpiresAfter = proto.Int64(int64(o.PublicURLExpiresAfter / time.Second))
+		}
+		out.PublicUrl = pu
+	}
+	return out, nil
+}
+
+// WithImageStorage stores the generated image in the Files API; the result
+// is on Image.FileOutput.
+func WithImageStorage(o StorageOptions) ImageOption {
+	return func(r *imageRequest) {
+		pb, err := o.proto()
+		if err != nil {
+			r.fail(err)
+			return
+		}
+		r.pb.StorageOptions = pb
+	}
+}
+
 // WithImageUser sets the opaque end-user identifier.
 func WithImageUser(user string) ImageOption {
 	return func(r *imageRequest) { r.pb.User = user }
@@ -258,6 +306,14 @@ func (i *Image) Proto() *GeneratedImage { return i.pb }
 
 // Response returns the response this image came from (model, usage).
 func (i *Image) Response() *ImageResponse { return i.resp }
+
+// FileOutput returns where the image was stored when WithImageStorage was
+// used, or nil. StorageError carries the reason when storing failed.
+func (i *Image) FileOutput() *v1.FileOutput { return i.pb.GetFileOutput() }
+
+// StorageError returns the server's reason when storing the image failed,
+// or an empty string.
+func (i *Image) StorageError() string { return i.pb.GetStorageError() }
 
 // URL returns the image URL. ErrImageFormat if the image came back as
 // base64 instead, ErrImageModerated if the API withheld it.
