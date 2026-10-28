@@ -276,3 +276,15 @@ func TestDeadline(t *testing.T) {
 		t.Fatalf("want deadline error, got %v", err)
 	}
 }
+
+// tests/sync/auth_test.py::test_get_api_key_info
+func TestAuthGetAPIKeyInfo(t *testing.T) {
+	c := newClient(t)
+	key, err := c.Auth().GetAPIKeyInfo(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key.GetRedactedApiKey() != "1**" || key.GetName() != "api key 0" {
+		t.Errorf("key = %v", key)
+	}
+}

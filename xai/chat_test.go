@@ -143,3 +143,21 @@ func TestAppendResponseCarriesToolCallsAndText(t *testing.T) {
 		t.Errorf("tool message: %v", msgs[1])
 	}
 }
+
+func TestEmbedRejectsNoInputs(t *testing.T) {
+	c, err := New(WithAPIKey("k"), WithInsecure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if _, err := c.Embed().Embed(t.Context(), "m"); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Embed with no inputs: %v", err)
+	}
+	in, err := EmbedImage("https://x/a.png", ImageDetailHigh)
+	if err != nil || in.GetImageUrl().GetDetail() != v1.ImageDetail_DETAIL_HIGH || in.GetImageUrl().GetImageUrl() != "https://x/a.png" {
+		t.Errorf("EmbedImage: %v %v", in, err)
+	}
+	if EmbedText("hi").GetString_() != "hi" {
+		t.Error("EmbedText")
+	}
+}
