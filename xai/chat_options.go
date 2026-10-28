@@ -1,7 +1,10 @@
 package xai
 
 import (
+	"time"
+
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	v1 "github.com/deanrie/xai-go/internal/gen/xai/api/v1"
 )
@@ -181,13 +184,153 @@ func FunctionTool(name, description, parametersJSON string) *Tool {
 // Server-side tools. The API runs these itself and the response then covers
 // every output; see Response.
 
+// WebSearchOption configures WebSearchTool.
+type WebSearchOption func(*v1.WebSearch)
+
+// WebSearchAllowedDomains restricts results to these domains.
+func WebSearchAllowedDomains(domains ...string) WebSearchOption {
+	return func(w *v1.WebSearch) { w.AllowedDomains = domains }
+}
+
+// WebSearchExcludedDomains drops results from these domains.
+func WebSearchExcludedDomains(domains ...string) WebSearchOption {
+	return func(w *v1.WebSearch) { w.ExcludedDomains = domains }
+}
+
+// WebSearchImageUnderstanding lets the model read images on pages.
+func WebSearchImageUnderstanding(on bool) WebSearchOption {
+	return func(w *v1.WebSearch) { w.EnableImageUnderstanding = proto.Bool(on) }
+}
+
+// WebSearchImageSearch lets the model search for images.
+func WebSearchImageSearch(on bool) WebSearchOption {
+	return func(w *v1.WebSearch) { w.EnableImageSearch = proto.Bool(on) }
+}
+
+// WebSearchLocation biases results toward a location. Empty strings are
+// left unset.
+func WebSearchLocation(country, region, city, timezone string) WebSearchOption {
+	return func(w *v1.WebSearch) {
+		loc := &v1.WebSearchUserLocation{}
+		if country != "" {
+			loc.Country = proto.String(country)
+		}
+		if region != "" {
+			loc.Region = proto.String(region)
+		}
+		if city != "" {
+			loc.City = proto.String(city)
+		}
+		if timezone != "" {
+			loc.Timezone = proto.String(timezone)
+		}
+		w.UserLocation = loc
+	}
+}
+
 // WebSearchTool lets the model search the web.
-func WebSearchTool() *Tool { return &Tool{Tool: &v1.Tool_WebSearch{WebSearch: &v1.WebSearch{}}} }
+func WebSearchTool(opts ...WebSearchOption) *Tool {
+	w := &v1.WebSearch{}
+	for _, o := range opts {
+		o(w)
+	}
+	return &Tool{Tool: &v1.Tool_WebSearch{WebSearch: w}}
+}
+
+// XSearchOption configures XSearchTool.
+type XSearchOption func(*v1.XSearch)
+
+// XSearchHandles restricts results to posts from these handles.
+func XSearchHandles(handles ...string) XSearchOption {
+	return func(x *v1.XSearch) { x.AllowedXHandles = handles }
+}
+
+// XSearchExcludedHandles drops posts from these handles.
+func XSearchExcludedHandles(handles ...string) XSearchOption {
+	return func(x *v1.XSearch) { x.ExcludedXHandles = handles }
+}
+
+// XSearchDateRange limits posts to [from, to]. A zero time leaves that
+// bound open.
+func XSearchDateRange(from, to time.Time) XSearchOption {
+	return func(x *v1.XSearch) {
+		if !from.IsZero() {
+			x.FromDate = timestamppb.New(from)
+		}
+		if !to.IsZero() {
+			x.ToDate = timestamppb.New(to)
+		}
+	}
+}
+
+// XSearchImageUnderstanding lets the model read images in posts.
+func XSearchImageUnderstanding(on bool) XSearchOption {
+	return func(x *v1.XSearch) { x.EnableImageUnderstanding = proto.Bool(on) }
+}
+
+// XSearchVideoUnderstanding lets the model watch videos in posts.
+func XSearchVideoUnderstanding(on bool) XSearchOption {
+	return func(x *v1.XSearch) { x.EnableVideoUnderstanding = proto.Bool(on) }
+}
 
 // XSearchTool lets the model search X.
-func XSearchTool() *Tool { return &Tool{Tool: &v1.Tool_XSearch{XSearch: &v1.XSearch{}}} }
+func XSearchTool(opts ...XSearchOption) *Tool {
+	x := &v1.XSearch{}
+	for _, o := range opts {
+		o(x)
+	}
+	return &Tool{Tool: &v1.Tool_XSearch{XSearch: x}}
+}
 
 // CodeExecutionTool lets the model run code in a sandbox.
 func CodeExecutionTool() *Tool {
 	return &Tool{Tool: &v1.Tool_CodeExecution{CodeExecution: &v1.CodeExecution{}}}
+}
+
+// CollectionsSearchTool lets the model search the given collections. The
+// SearchOptions limit, instructions and retrieval mode apply; the API
+// rejects anything else.
+func CollectionsSearchTool(collectionIDs []string, opts ...SearchOption) *Tool {
+	req := &v1.SearchRequest{}
+	for _, o := range opts {
+		o(req)
+	}
+	cs := &v1.CollectionsSearch{CollectionIds: collectionIDs, Limit: req.Limit, Instructions: req.Instructions}
+	switch m := req.GetRetrievalMode().(type) {
+	case *v1.SearchRequest_HybridRetrieval:
+		cs.RetrievalMode = &v1.CollectionsSearch_HybridRetrieval{HybridRetrieval: m.HybridRetrieval}
+	case *v1.SearchRequest_SemanticRetrieval:
+		cs.RetrievalMode = &v1.CollectionsSearch_SemanticRetrieval{SemanticRetrieval: m.SemanticRetrieval}
+	case *v1.SearchRequest_KeywordRetrieval:
+		cs.RetrievalMode = &v1.CollectionsSearch_KeywordRetrieval{KeywordRetrieval: m.KeywordRetrieval}
+	case nil:
+	}
+	return &Tool{Tool: &v1.Tool_CollectionsSearch{CollectionsSearch: cs}}
+}
+
+// MCPOption configures MCPTool.
+type MCPOption func(*v1.MCP)
+
+// MCPAllowedTools restricts the model to these tool names on the server.
+func MCPAllowedTools(names ...string) MCPOption {
+	return func(m *v1.MCP) { m.AllowedToolNames = names }
+}
+
+// MCPAuthorization sets the Authorization header value sent to the server.
+func MCPAuthorization(value string) MCPOption {
+	return func(m *v1.MCP) { m.Authorization = proto.String(value) }
+}
+
+// MCPHeaders adds extra HTTP headers for the server.
+func MCPHeaders(headers map[string]string) MCPOption {
+	return func(m *v1.MCP) { m.ExtraHeaders = headers }
+}
+
+// MCPTool lets the model call a remote MCP server.
+func MCPTool(label, url, description string, opts ...MCPOption) *Tool {
+	m := &v1.MCP{ServerLabel: label, ServerUrl: url, ServerDescription: description}
+	for _, o := range opts {
+		o(m)
+	}
+	return &Tool{Tool: &v1.Tool_Mcp{Mcp: m}}
 }

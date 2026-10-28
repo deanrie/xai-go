@@ -232,3 +232,28 @@ func TestBatchResultFromProto(t *testing.T) {
 		t.Errorf("chat result: %+v", okRes)
 	}
 }
+
+func TestServerSideToolConstructors(t *testing.T) {
+	ws := WebSearchTool(WebSearchAllowedDomains("x.ai"), WebSearchLocation("GB", "", "London", "Europe/London"), WebSearchImageSearch(true)).GetWebSearch()
+	if ws.GetAllowedDomains()[0] != "x.ai" || ws.GetUserLocation().GetCity() != "London" || ws.GetUserLocation().Region != nil || !ws.GetEnableImageSearch() {
+		t.Errorf("web search: %v", ws)
+	}
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	xs := XSearchTool(XSearchHandles("xai"), XSearchDateRange(from, time.Time{})).GetXSearch()
+	if xs.GetAllowedXHandles()[0] != "xai" || !xs.GetFromDate().AsTime().Equal(from) || xs.ToDate != nil {
+		t.Errorf("x search: %v", xs)
+	}
+	cs := CollectionsSearchTool([]string{"c1"}, WithSearchLimit(5), WithSemanticRetrieval(Reranker("m", ""))).GetCollectionsSearch()
+	if cs.GetCollectionIds()[0] != "c1" || cs.GetLimit() != 5 || cs.GetSemanticRetrieval().GetReranker().GetModel() != "m" {
+		t.Errorf("collections search: %v", cs)
+	}
+	mcp := MCPTool("docs", "https://mcp.example", "Docs", MCPAllowedTools("search"), MCPAuthorization("Bearer t"), MCPHeaders(map[string]string{"X-A": "1"})).GetMcp()
+	if mcp.GetServerLabel() != "docs" || mcp.GetAllowedToolNames()[0] != "search" || mcp.GetAuthorization() != "Bearer t" || mcp.GetExtraHeaders()["X-A"] != "1" {
+		t.Errorf("mcp: %v", mcp)
+	}
+	c, _ := New(WithAPIKey("k"), WithInsecure())
+	defer c.Close()
+	if !c.Chat("m", WithTools(MCPTool("a", "u", "d"))).usesServerSideTools() {
+		t.Error("MCP is a server-side tool")
+	}
+}
