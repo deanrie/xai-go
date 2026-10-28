@@ -11,4 +11,4 @@ The conformance tests run the gRPC test server that ships with
 https://github.com/xai-org/xai-sdk-python (Copyright 2025 X.AI LLC,
 Apache License, Version 2.0); that code is not included in this repository.
 
-This is a community project and is not affiliated with or endorsed by xAI.
+This is not an official xAI SDK.

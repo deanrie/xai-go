@@ -138,4 +138,4 @@ XAI_SDK_PYTHON_DIR=~/src/xai-sdk-python go test ./tests/conformance/
 
 ## License
 
-Apache-2.0. The generated code under `internal/gen` derives from [xai-proto](https://github.com/xai-org/xai-proto) (Apache-2.0, X.AI LLC); see `NOTICE`. This is a community project, not an official xAI SDK.
+Apache-2.0. The generated code under `internal/gen` derives from [xai-proto](https://github.com/xai-org/xai-proto) (Apache-2.0, X.AI LLC); see `NOTICE`. This is not an official xAI SDK.
