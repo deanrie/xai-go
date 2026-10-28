@@ -288,3 +288,46 @@ func TestAuthGetAPIKeyInfo(t *testing.T) {
 		t.Errorf("key = %v", key)
 	}
 }
+
+// tests/sync/chat_test.py::test_defer: the server answers PENDING twice,
+// then DONE.
+func TestChatDefer(t *testing.T) {
+	c := newClient(t)
+	chat := c.Chat("grok-4").Append(xai.User(xai.Text("hi")))
+	resp, err := chat.Defer(t.Context(), xai.PollOptions{Interval: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Content() == "" {
+		t.Error("empty deferred content")
+	}
+	batch, err := chat.DeferBatch(t.Context(), 2, xai.PollOptions{Interval: 10 * time.Millisecond})
+	if err != nil || len(batch) != 2 {
+		t.Fatalf("DeferBatch: %d %v", len(batch), err)
+	}
+	// Too short a timeout surfaces as ErrPollTimeout, not as a hang.
+	_, err = chat.Defer(t.Context(), xai.PollOptions{Interval: 50 * time.Millisecond, Timeout: 20 * time.Millisecond})
+	if !errors.Is(err, xai.ErrPollTimeout) {
+		t.Errorf("want ErrPollTimeout, got %v", err)
+	}
+}
+
+// tests/sync/chat_test.py::test_stored_completion: stored with
+// store_messages, retrievable by id, NOT_FOUND after delete.
+func TestStoredCompletion(t *testing.T) {
+	c := newClient(t)
+	resp, err := c.Chat("grok-4", xai.WithStoreMessages(true)).Append(xai.User(xai.Text("hi"))).Sample(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.GetStoredCompletion(t.Context(), resp.ID())
+	if err != nil || got.ID() != resp.ID() {
+		t.Fatalf("GetStoredCompletion: %v %v", got, err)
+	}
+	if err := c.DeleteStoredCompletion(t.Context(), resp.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.GetStoredCompletion(t.Context(), resp.ID()); !errors.Is(err, xai.ErrNotFound) {
+		t.Errorf("after delete: %v", err)
+	}
+}
