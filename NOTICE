@@ -1,0 +1,14 @@
+xai-go
+Copyright 2026 Dean Rie
+
+This product includes Go code generated from the protobuf definitions in
+https://github.com/xai-org/xai-proto (Copyright 2025 X.AI LLC), licensed
+under the Apache License, Version 2.0. The generated files live under
+internal/gen and record the xai-proto commit they were produced from in
+internal/gen/XAI_PROTO_COMMIT.
+
+The conformance tests run the gRPC test server that ships with
+https://github.com/xai-org/xai-sdk-python (Copyright 2025 X.AI LLC,
+Apache License, Version 2.0); that code is not included in this repository.
+
+This is a community project and is not affiliated with or endorsed by xAI.
