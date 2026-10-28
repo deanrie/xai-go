@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc"
+
 	"github.com/deanrie/xai-go/xai"
 )
 
@@ -32,7 +34,7 @@ const (
 	serverStartup        = 60 * time.Second
 )
 
-var serverAddr, managementAddr string
+var serverAddr, managementAddr, flakyAddr, flakyAddr2 string
 
 func TestMain(m *testing.M) {
 	dir := os.Getenv("XAI_SDK_PYTHON_DIR")
@@ -60,18 +62,16 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	portCh := make(chan [2]string, 1)
+	portCh := make(chan map[string]string, 1)
 	go func() {
 		sc := bufio.NewScanner(stdout)
-		var ports [2]string
+		ports := map[string]string{}
 		for sc.Scan() {
-			if p, ok := strings.CutPrefix(sc.Text(), "port="); ok {
-				ports[0] = p
+			k, v, ok := strings.Cut(sc.Text(), "=")
+			if ok && (strings.HasSuffix(k, "port") || strings.HasSuffix(k, "port_2")) {
+				ports[k] = v
 			}
-			if p, ok := strings.CutPrefix(sc.Text(), "mgmt_port="); ok {
-				ports[1] = p
-			}
-			if ports[0] != "" && ports[1] != "" {
+			if len(ports) == 4 {
 				portCh <- ports
 				break
 			}
@@ -81,8 +81,10 @@ func TestMain(m *testing.M) {
 
 	select {
 	case ports := <-portCh:
-		serverAddr = "127.0.0.1:" + ports[0]
-		managementAddr = "127.0.0.1:" + ports[1]
+		serverAddr = "127.0.0.1:" + ports["port"]
+		managementAddr = "127.0.0.1:" + ports["mgmt_port"]
+		flakyAddr = "127.0.0.1:" + ports["flaky_port"]
+		flakyAddr2 = "127.0.0.1:" + ports["flaky_port_2"]
 	case <-time.After(serverStartup):
 		_ = cmd.Process.Kill()
 		panic("conformance: test server did not report its ports")
@@ -710,5 +712,21 @@ func TestChatStreamBatch(t *testing.T) {
 		if r.Content() == "" {
 			t.Errorf("response %d empty", i)
 		}
+	}
+}
+
+// tests/sync/client_test.py::test_retries: the first call fails with
+// UNAVAILABLE; the default service config retries it, and a client that
+// disables retries sees the failure.
+func TestRetriesOnUnavailable(t *testing.T) {
+	c := newClient(t, xai.WithAPIHost(flakyAddr))
+	key, err := c.Auth().GetAPIKeyInfo(t.Context())
+	if err != nil || key.GetRedactedApiKey() != "1**" {
+		t.Fatalf("with retries: %v %v", key, err)
+	}
+
+	noRetry := newClient(t, xai.WithAPIHost(flakyAddr2), xai.WithDialOptions(grpc.WithDisableRetry()))
+	if _, err := noRetry.Auth().GetAPIKeyInfo(t.Context()); !errors.Is(err, xai.ErrUnavailable) {
+		t.Fatalf("without retries: want ErrUnavailable, got %v", err)
 	}
 }
