@@ -367,3 +367,20 @@ func TestFilesPublicURLValidation(t *testing.T) {
 		t.Errorf("expires_after below 1h: %v", err)
 	}
 }
+
+func TestBatchImageAndVideoRequests(t *testing.T) {
+	img, err := BatchImageRequest("i1", "grok-imagine", "a cat", 2, WithImageAspectRatio("16:9"))
+	if err != nil || img.GetImageRequest().GetN() != 2 || img.GetBatchRequestId() != "i1" {
+		t.Errorf("image request: %v %v", img, err)
+	}
+	if _, err := BatchImageRequest("", "m", "p", 0); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("n=0: %v", err)
+	}
+	vid, err := BatchVideoRequest("", "grok-imagine-video", "waves", WithVideoDuration(6))
+	if err != nil || vid.GetVideoRequest().GetDuration() != 6 || vid.BatchRequestId != nil {
+		t.Errorf("video request: %v %v", vid, err)
+	}
+	if _, err := BatchVideoRequest("", "m", "p", WithVideoResolution("8k")); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("bad resolution: %v", err)
+	}
+}

@@ -19,7 +19,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `text(...)`, `image(url, detail)` | `Text(...)`, `ImageURL(url, detail)` |
 | `tool(...)`, `web_search(...)`, `x_search(...)`, `code_execution()`, `collections_search(...)`, `mcp(...)` | `FunctionTool(...)`, `WebSearchTool(...)`, `XSearchTool(...)`, `CodeExecutionTool()`, `CollectionsSearchTool(...)`, `MCPTool(...)` |
 | `files.upload(path_or_bytes, filename=...)` | `Files.UploadFile(ctx, path)`, `Files.UploadBytes(ctx, name, data)`, `Files.Upload(ctx, name, r, size)` |
-| `files.batch_upload(...)` | call `Upload*` in goroutines; no wrapper |
+| `files.batch_upload(files, batch_size)` | `Files.UploadAll(ctx, paths, concurrency, opts...)` (results in input order, per-file errors) |
 | `files.list(...)` | `Files.ListPage(ctx, limit, order, token)`, `Files.All(ctx, order)` |
 | `files.get(id)` | `Files.Get(ctx, id)` |
 | `files.delete(id)` | `Files.Delete(ctx, id)` |
@@ -28,7 +28,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `files.revoke_public_url(id)` | `Files.RevokePublicURL(ctx, id)` |
 | `image.sample(prompt, model, ...)` | `Images.Generate(ctx, model, prompt, opts...)` |
 | `image.sample_batch(prompt, model, n, ...)` | `Images.GenerateBatch(ctx, model, prompt, n, opts...)` |
-| `image.prepare(...)` (batch item) | build the request through `Images` options; batch items for images are not wrapped yet |
+| `image.prepare(...)`, `video.prepare(...)` (batch items) | `BatchImageRequest(id, model, prompt, n, opts...)`, `BatchVideoRequest(id, model, prompt, opts...)` |
 | `ImageResponse.url`, `.base64`, `.image` | `Image.URL()`, `Image.Base64()`, `Image.Bytes()` |
 | `video.generate(...)` | `Videos.Generate(ctx, model, prompt, poll, opts...)` |
 | `video.start(...)`, `video.get(id)` | `Videos.Start(...)`, `Videos.Get(ctx, id)`, `Videos.Wait(ctx, id, poll, onProgress)` |

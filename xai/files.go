@@ -8,6 +8,7 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -294,4 +295,41 @@ func (f *Files) RevokePublicURL(ctx context.Context, fileID string) (bool, error
 		return false, wrapErr(err)
 	}
 	return resp.GetRevoked(), nil
+}
+
+// UploadResult is one outcome of UploadAll, in input order.
+type UploadResult struct {
+	Path string
+	File *File
+	Err  error
+}
+
+// UploadAll uploads several files concurrently, at most concurrency at a
+// time (0 means 50, the Python SDK's default). It returns one result per
+// path in input order; a failed upload does not stop the others. The
+// context cancels uploads not yet started and those in flight.
+func (f *Files) UploadAll(ctx context.Context, paths []string, concurrency int, opts ...UploadOption) []UploadResult {
+	if concurrency <= 0 {
+		concurrency = 50
+	}
+	results := make([]UploadResult, len(paths))
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	for i, p := range paths {
+		results[i].Path = p
+		wg.Add(1)
+		go func(i int, p string) {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[i].Err = ctx.Err()
+				return
+			}
+			results[i].File, results[i].Err = f.UploadFile(ctx, p, opts...)
+		}(i, p)
+	}
+	wg.Wait()
+	return results
 }

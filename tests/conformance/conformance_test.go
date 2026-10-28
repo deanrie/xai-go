@@ -730,3 +730,31 @@ func TestRetriesOnUnavailable(t *testing.T) {
 		t.Fatalf("without retries: want ErrUnavailable, got %v", err)
 	}
 }
+
+// tests/sync/files_test.py::test_batch_upload: results come back in input
+// order, a missing path fails on its own without stopping the rest.
+func TestFilesUploadAll(t *testing.T) {
+	c := newClient(t)
+	dir := t.TempDir()
+	var paths []string
+	for i := range 5 {
+		p := filepath.Join(dir, fmt.Sprintf("f%d.txt", i))
+		if err := os.WriteFile(p, []byte(strings.Repeat("x", i+1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, p)
+	}
+	paths = append(paths, filepath.Join(dir, "missing.txt"))
+	results := c.Files().UploadAll(t.Context(), paths, 2)
+	if len(results) != 6 {
+		t.Fatalf("results = %d", len(results))
+	}
+	for i := range 5 {
+		if results[i].Err != nil || results[i].File.GetSize() != int64(i+1) || results[i].Path != paths[i] {
+			t.Errorf("result %d: %+v", i, results[i])
+		}
+	}
+	if !errors.Is(results[5].Err, os.ErrNotExist) {
+		t.Errorf("missing file: %v", results[5].Err)
+	}
+}

@@ -238,3 +238,38 @@ func (b *Batches) Result(ctx context.Context, batchID, requestID string) (*Batch
 	}
 	return resp.GetRequest(), batchResultFromProto(resp.GetResult()), nil
 }
+
+// BatchImageRequest wraps an image generation request as a batch item.
+func BatchImageRequest(id, model, prompt string, n int, opts ...ImageOption) (*BatchRequest, error) {
+	if n < 1 || n > 10 {
+		return nil, &ValidationError{Param: "n", Value: n, Accepted: []string{"1 to 10"}}
+	}
+	r := &imageRequest{pb: &v1.GenerateImageRequest{Prompt: prompt, Model: model, N: proto.Int32(int32(n)), Format: v1.ImageFormat_IMG_FORMAT_URL}}
+	for _, o := range opts {
+		o(r)
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	out := &BatchRequest{Request: &v1.BatchRequest_ImageRequest{ImageRequest: r.pb}}
+	if id != "" {
+		out.BatchRequestId = proto.String(id)
+	}
+	return out, nil
+}
+
+// BatchVideoRequest wraps a video generation request as a batch item.
+func BatchVideoRequest(id, model, prompt string, opts ...VideoOption) (*BatchRequest, error) {
+	r := &videoRequest{pb: &v1.GenerateVideoRequest{Prompt: prompt, Model: model}}
+	for _, o := range opts {
+		o(r)
+	}
+	if r.err != nil {
+		return nil, r.err
+	}
+	out := &BatchRequest{Request: &v1.BatchRequest_VideoRequest{VideoRequest: r.pb}}
+	if id != "" {
+		out.BatchRequestId = proto.String(id)
+	}
+	return out, nil
+}

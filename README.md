@@ -108,11 +108,11 @@ XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
 | Chat (sample, stream, batch, stream batch, function tools, multi-output) | done |
 | Chat (deferred, stored completions, compact context) | done |
 | Chat (web_search, x_search, collections_search, MCP, code_execution options) | done |
-| Files (upload, list, content, delete, public URLs) | done |
+| Files (upload, concurrent upload, list, content, delete, public URLs) | done |
 | Embed, Auth | done |
 | Image (generate, batch, url or base64, edit inputs) | done |
 | Video (start, poll, wait, extend) | done |
-| Batch (create, add, wait, results, cancel) | done |
+| Batch (chat, image and video requests; create, add, wait, results, cancel) | done |
 | Collections (create, update, list, documents, upload and wait, update document, batch get, delete) | done, from recovered protos (see below) |
 | Documents (search with semantic, keyword, hybrid retrieval) | done |
 | Sample (legacy) | not planned |
