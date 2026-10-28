@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	v1 "github.com/deanrie/xai-go/internal/gen/xai/api/v1"
 )
 
@@ -211,5 +214,21 @@ func TestVideoErrorMessage(t *testing.T) {
 	var ve *VideoError
 	if !errors.As(err, &ve) || ve.Code != "CONTENT_POLICY" {
 		t.Error("errors.As")
+	}
+}
+
+func TestBatchResultFromProto(t *testing.T) {
+	st, _ := status.New(codes.ResourceExhausted, "quota").WithDetails()
+	errRes := batchResultFromProto(&v1.BatchResult{BatchRequestId: "a", Result: &v1.BatchResult_Error{Error: st.Proto()}})
+	if !errors.Is(errRes.Err, ErrResourceExhausted) || errRes.RequestID != "a" {
+		t.Errorf("error result: %v", errRes.Err)
+	}
+	okRes := batchResultFromProto(&v1.BatchResult{BatchRequestId: "b", Result: &v1.BatchResult_Response{Response: &v1.BatchResultData{
+		Response: &v1.BatchResultData_CompletionResponse{CompletionResponse: &v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{
+			Message: &v1.CompletionMessage{Role: v1.MessageRole_ROLE_ASSISTANT, Content: "done"},
+		}}}},
+	}}})
+	if okRes.Err != nil || okRes.Chat == nil || okRes.Chat.Content() != "done" {
+		t.Errorf("chat result: %+v", okRes)
 	}
 }

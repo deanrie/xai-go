@@ -435,3 +435,77 @@ func TestVideosGenerate(t *testing.T) {
 		t.Errorf("bad resolution: %v", err)
 	}
 }
+
+// tests/sync/batch_test.py: create, add 12 chat requests (two result
+// pages at the server's default limit of 10), list, cancel, read results
+// including the cancelled-as-error ones.
+func TestBatches(t *testing.T) {
+	c := newClient(t)
+	batch, err := c.Batches().Create(t.Context(), "go-conformance", "")
+	if err != nil || batch.GetBatchId() == "" {
+		t.Fatalf("Create: %v %v", batch, err)
+	}
+	chat := c.Chat("grok-4").Append(xai.User(xai.Text("hi")))
+	var reqs []*xai.BatchRequest
+	for i := range 12 {
+		r, err := xai.BatchChatRequest(fmt.Sprintf("req-%d", i), chat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reqs = append(reqs, r)
+	}
+	if err := c.Batches().Add(t.Context(), batch.GetBatchId(), reqs...); err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.Batches().Get(t.Context(), batch.GetBatchId())
+	if err != nil || got.GetState().GetNumRequests() != 12 || got.GetState().GetNumPending() != 12 {
+		t.Fatalf("Get: %v %v", got.GetState(), err)
+	}
+
+	var ids []string
+	for m, err := range c.Batches().Requests(t.Context(), batch.GetBatchId()) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, m.GetBatchRequestId())
+	}
+	if len(ids) != 12 || ids[0] != "req-0" {
+		t.Errorf("request metadata = %v", ids)
+	}
+
+	var seen int
+	for b, err := range c.Batches().All(t.Context()) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b.GetBatchId() == batch.GetBatchId() {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Errorf("batch listed %d times", seen)
+	}
+
+	var results, errs int
+	for r, err := range c.Batches().Results(t.Context(), batch.GetBatchId()) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		results++
+		if r.Err != nil {
+			errs++
+		} else if r.Chat == nil || r.Chat.Content() == "" {
+			t.Errorf("result %s without chat content", r.RequestID)
+		}
+	}
+	if results != 12 || errs != 0 {
+		t.Errorf("results=%d errs=%d", results, errs)
+	}
+
+	if err := c.Batches().Add(t.Context(), "missing", reqs[0]); !errors.Is(err, xai.ErrNotFound) {
+		t.Errorf("Add to unknown batch: %v", err)
+	}
+	if err := c.Batches().Add(t.Context(), batch.GetBatchId()); !errors.Is(err, xai.ErrInvalidArgument) {
+		t.Errorf("Add with no requests: %v", err)
+	}
+}
