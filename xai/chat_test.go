@@ -2,7 +2,9 @@ package xai
 
 import (
 	"errors"
+	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -255,5 +257,82 @@ func TestServerSideToolConstructors(t *testing.T) {
 	defer c.Close()
 	if !c.Chat("m", WithTools(MCPTool("a", "u", "d"))).usesServerSideTools() {
 		t.Error("MCP is a server-side tool")
+	}
+}
+
+// fakeChunkStream feeds canned chunks to ChatStream.All.
+type fakeChunkStream struct {
+	v1.Chat_GetCompletionChunkClient
+	chunks []*v1.GetChatCompletionChunk
+	err    error
+}
+
+func (f *fakeChunkStream) Recv() (*v1.GetChatCompletionChunk, error) {
+	if len(f.chunks) == 0 {
+		if f.err != nil {
+			return nil, f.err
+		}
+		return nil, io.EOF
+	}
+	c := f.chunks[0]
+	f.chunks = f.chunks[1:]
+	return c, nil
+}
+
+func TestChatStreamAccumulatesToolCallsAndSwitchesToMultiOutput(t *testing.T) {
+	toolChunk := &v1.GetChatCompletionChunk{Id: "s1", Outputs: []*v1.CompletionOutputChunk{
+		{Index: 0, Delta: &v1.Delta{Role: v1.MessageRole_ROLE_ASSISTANT, ToolCalls: []*v1.ToolCall{{Id: "tc-1"}}}},
+		{Index: 1, Delta: &v1.Delta{Role: v1.MessageRole_ROLE_TOOL, Content: "tool said"}},
+	}}
+	textChunks := []*v1.GetChatCompletionChunk{
+		{Id: "s1", Outputs: []*v1.CompletionOutputChunk{{Index: 2, Delta: &v1.Delta{Role: v1.MessageRole_ROLE_ASSISTANT, Content: "Final "}}}},
+		{Id: "s1", Outputs: []*v1.CompletionOutputChunk{{Index: 2, Delta: &v1.Delta{Role: v1.MessageRole_ROLE_ASSISTANT, Content: "answer"}, FinishReason: v1.FinishReason_REASON_STOP}}},
+	}
+	s := &ChatStream{
+		stream:   &fakeChunkStream{chunks: append([]*v1.GetChatCompletionChunk{toolChunk}, textChunks...)},
+		cancel:   func() {},
+		response: newResponse(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{}}}, 0),
+	}
+	var texts []string
+	for resp, chunk := range s.All() {
+		texts = append(texts, chunk.Content())
+		if resp.index != allOutputs {
+			t.Fatalf("index after a chunk with output 1 = %d", resp.index)
+		}
+	}
+	if s.Err() != nil {
+		t.Fatal(s.Err())
+	}
+	r := s.Response()
+	if r.Content() != "Final answer" || strings.Join(texts, "") != "Final answer" {
+		t.Errorf("content = %q, chunks = %q", r.Content(), texts)
+	}
+	if calls := r.ToolCalls(); len(calls) != 1 || calls[0].GetId() != "tc-1" {
+		t.Errorf("tool calls = %v", calls)
+	}
+	if r.FinishReason() != v1.FinishReason_REASON_STOP {
+		t.Errorf("finish reason = %v", r.FinishReason())
+	}
+}
+
+func TestChatStreamReportsTransportErrors(t *testing.T) {
+	s := &ChatStream{
+		stream:   &fakeChunkStream{chunks: []*v1.GetChatCompletionChunk{chunk("x", "partial")}, err: status.Error(codes.Unavailable, "gone")},
+		cancel:   func() {},
+		response: newResponse(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{}}}, 0),
+	}
+	n := 0
+	for range s.All() {
+		n++
+	}
+	if n != 1 || !errors.Is(s.Err(), ErrUnavailable) {
+		t.Fatalf("chunks=%d err=%v", n, s.Err())
+	}
+	if s.Response().Content() != "partial" {
+		t.Error("partial content lost on error")
+	}
+	// A second range does nothing and keeps the error.
+	for range s.All() {
+		t.Fatal("stream yielded after it ended")
 	}
 }
