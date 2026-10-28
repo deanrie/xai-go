@@ -390,3 +390,91 @@ func (cs *Collections) GenerateDescription(ctx context.Context, collectionID str
 	}
 	return resp.GetCollectionDescription(), nil
 }
+
+// UpdateOption sets a field of Collections.Update.
+type UpdateOption func(*collections.UpdateCollectionRequest)
+
+// RenameCollection changes the collection name.
+func RenameCollection(name string) UpdateOption {
+	return func(r *collections.UpdateCollectionRequest) { r.CollectionName = proto.String(name) }
+}
+
+// UpdateDescription changes the collection description.
+func UpdateDescription(s string) UpdateOption {
+	return func(r *collections.UpdateCollectionRequest) { r.CollectionDescription = proto.String(s) }
+}
+
+// UpdateChunking changes how new documents are split.
+func UpdateChunking(cfg *ChunkConfiguration) UpdateOption {
+	return func(r *collections.UpdateCollectionRequest) { r.ChunkConfiguration = cfg }
+}
+
+// AddFieldDefinition declares a new metadata field.
+func AddFieldDefinition(def *FieldDefinition) UpdateOption {
+	return func(r *collections.UpdateCollectionRequest) {
+		r.FieldDefinitionUpdates = append(r.FieldDefinitionUpdates, &collections.FieldDefinitionUpdate{
+			FieldDefinition: def, Operation: collections.FieldDefinitionOperation_FIELD_DEFINITION_ADD,
+		})
+	}
+}
+
+// RemoveFieldDefinition drops a metadata field by key.
+func RemoveFieldDefinition(key string) UpdateOption {
+	return func(r *collections.UpdateCollectionRequest) {
+		r.FieldDefinitionUpdates = append(r.FieldDefinitionUpdates, &collections.FieldDefinitionUpdate{
+			FieldDefinition: &FieldDefinition{Key: key}, Operation: collections.FieldDefinitionOperation_FIELD_DEFINITION_DELETE,
+		})
+	}
+}
+
+// Update changes a collection's name, description, chunking or fields.
+func (cs *Collections) Update(ctx context.Context, collectionID string, opts ...UpdateOption) (*CollectionMetadata, error) {
+	if len(opts) == 0 {
+		return nil, &ValidationError{Param: "opts", Value: 0, Accepted: []string{"at least one UpdateOption"}}
+	}
+	req := &collections.UpdateCollectionRequest{CollectionId: collectionID}
+	for _, o := range opts {
+		o(req)
+	}
+	stub, err := cs.stub()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := cs.c.ManagementCallContext(ctx)
+	defer cancel()
+	meta, err := stub.UpdateCollection(ctx, req)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	return meta, nil
+}
+
+// BatchGetDocuments returns metadata for several documents at once; ids
+// the collection does not know are left out.
+func (cs *Collections) BatchGetDocuments(ctx context.Context, collectionID string, fileIDs ...string) ([]*DocumentMetadata, error) {
+	stub, err := cs.stub()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := cs.c.ManagementCallContext(ctx)
+	defer cancel()
+	resp, err := stub.BatchGetDocuments(ctx, &collections.BatchGetDocumentsRequest{CollectionId: collectionID, FileIds: fileIDs})
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	return resp.GetDocuments(), nil
+}
+
+// UploadDocument uploads content as a file, adds it to the collection and
+// waits until it is indexed. It is Files.UploadBytes, AddDocument and
+// WaitForDocument in one call, matching the Python SDK's upload_document.
+func (cs *Collections) UploadDocument(ctx context.Context, collectionID, name string, data []byte, fields map[string]string, opts PollOptions) (*DocumentMetadata, error) {
+	file, err := cs.c.Files().UploadBytes(ctx, name, data)
+	if err != nil {
+		return nil, err
+	}
+	if err := cs.AddDocument(ctx, collectionID, file.GetId(), fields); err != nil {
+		return nil, err
+	}
+	return cs.WaitForDocument(ctx, collectionID, file.GetId(), opts)
+}

@@ -113,7 +113,7 @@ XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
 | Image (generate, batch, url or base64, edit inputs) | done |
 | Video (start, poll, wait, extend) | done |
 | Batch (create, add, wait, results, cancel) | done |
-| Collections (create, list, documents, wait for indexing, delete) | done, from recovered protos (see below) |
+| Collections (create, update, list, documents, upload and wait, batch get, delete) | done, from recovered protos (see below) |
 | Documents (search with semantic, keyword, hybrid retrieval) | done |
 | Sample (legacy) | not planned |
 

@@ -645,6 +645,26 @@ func TestCollections(t *testing.T) {
 		t.Errorf("after delete: %v", err)
 	}
 
+	col2, err := cs.Create(t.Context(), "go-conformance-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upd, err := cs.Update(t.Context(), col2.GetCollectionId(), xai.RenameCollection("renamed"), xai.UpdateDescription("d2"), xai.AddFieldDefinition(&xai.FieldDefinition{Key: "lang"}))
+	if err != nil || upd.GetCollectionName() != "renamed" {
+		t.Errorf("Update: %v %v", upd, err)
+	}
+	if _, err := cs.Update(t.Context(), col2.GetCollectionId()); !errors.Is(err, xai.ErrInvalidArgument) {
+		t.Errorf("Update without options: %v", err)
+	}
+	one, err := cs.UploadDocument(t.Context(), col2.GetCollectionId(), "test-processing-0.2", []byte("body"), map[string]string{"lang": "en"}, xai.PollOptions{Interval: 50 * time.Millisecond})
+	if err != nil || one.GetStatus() != xai.DocumentProcessed || one.GetFields()["lang"] != "en" {
+		t.Errorf("UploadDocument: %v %v", one, err)
+	}
+	batch, err := cs.BatchGetDocuments(t.Context(), col2.GetCollectionId(), one.GetFileMetadata().GetFileId(), "missing")
+	if err != nil || len(batch) != 1 {
+		t.Errorf("BatchGetDocuments: %d %v", len(batch), err)
+	}
+
 	// The management key is checked separately from the API key.
 	wrong := newClient(t, xai.WithManagementAPIKey("nope"))
 	if _, err := wrong.Collections().Get(t.Context(), "x"); !errors.Is(err, xai.ErrUnauthenticated) {
