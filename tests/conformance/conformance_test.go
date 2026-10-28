@@ -27,11 +27,12 @@ import (
 
 // Constants from tests/server.py.
 const (
-	testAPIKey    = "123"
-	serverStartup = 60 * time.Second
+	testAPIKey           = "123"
+	testManagementAPIKey = "456"
+	serverStartup        = 60 * time.Second
 )
 
-var serverAddr string
+var serverAddr, managementAddr string
 
 func TestMain(m *testing.M) {
 	dir := os.Getenv("XAI_SDK_PYTHON_DIR")
@@ -59,12 +60,19 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	portCh := make(chan string, 1)
+	portCh := make(chan [2]string, 1)
 	go func() {
 		sc := bufio.NewScanner(stdout)
+		var ports [2]string
 		for sc.Scan() {
 			if p, ok := strings.CutPrefix(sc.Text(), "port="); ok {
-				portCh <- p
+				ports[0] = p
+			}
+			if p, ok := strings.CutPrefix(sc.Text(), "mgmt_port="); ok {
+				ports[1] = p
+			}
+			if ports[0] != "" && ports[1] != "" {
+				portCh <- ports
 				break
 			}
 		}
@@ -72,11 +80,12 @@ func TestMain(m *testing.M) {
 	}()
 
 	select {
-	case port := <-portCh:
-		serverAddr = "127.0.0.1:" + port
+	case ports := <-portCh:
+		serverAddr = "127.0.0.1:" + ports[0]
+		managementAddr = "127.0.0.1:" + ports[1]
 	case <-time.After(serverStartup):
 		_ = cmd.Process.Kill()
-		panic("conformance: test server did not report a port")
+		panic("conformance: test server did not report its ports")
 	}
 
 	code := m.Run()
@@ -97,6 +106,8 @@ func newClient(t *testing.T, opts ...xai.Option) *xai.Client {
 	c, err := xai.New(append([]xai.Option{
 		xai.WithAPIKey(testAPIKey),
 		xai.WithAPIHost(serverAddr),
+		xai.WithManagementAPIKey(testManagementAPIKey),
+		xai.WithManagementAPIHost(managementAddr),
 		xai.WithInsecure(),
 	}, opts...)...)
 	if err != nil {
@@ -542,5 +553,109 @@ func TestChatCompact(t *testing.T) {
 	msgs := chat.Messages()
 	if len(msgs) != 1 || msgs[0].GetEncryptedContent() != resp.GetEncryptedContent() || len(msgs[0].GetContent()) != 0 {
 		t.Errorf("messages after compact = %v", msgs)
+	}
+}
+
+// tests/sync/collections_test.py: the management server shares the store
+// with the files server; "test-processing-<s>" names index for s seconds,
+// "test-failed" fails.
+func TestCollections(t *testing.T) {
+	c := newClient(t)
+	cs := c.Collections()
+	col, err := cs.Create(t.Context(), "go-conformance", xai.WithCollectionDescription("docs"), xai.WithChunking(xai.ChunkByChars(500, 50)), xai.WithMetric(xai.MetricCosine))
+	if err != nil || col.GetCollectionId() == "" {
+		t.Fatalf("Create: %v %v", col, err)
+	}
+	got, err := cs.Get(t.Context(), col.GetCollectionId())
+	if err != nil || got.GetCollectionName() != "go-conformance" {
+		t.Fatalf("Get: %v %v", got, err)
+	}
+	var seen int
+	for m, err := range cs.All(t.Context(), xai.Ascending) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.GetCollectionId() == col.GetCollectionId() {
+			seen++
+		}
+	}
+	if seen != 1 {
+		t.Errorf("collection listed %d times", seen)
+	}
+
+	fast, err := c.Files().UploadBytes(t.Context(), "notes.txt", []byte("hello collections"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.AddDocument(t.Context(), col.GetCollectionId(), fast.GetId(), map[string]string{"source": "test"}); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := cs.GetDocument(t.Context(), col.GetCollectionId(), fast.GetId())
+	if err != nil || doc.GetStatus() != xai.DocumentProcessed || doc.GetFields()["source"] != "test" {
+		t.Errorf("GetDocument: %v %v", doc, err)
+	}
+
+	slow, err := c.Files().UploadBytes(t.Context(), "test-processing-0.3", []byte("slow"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.AddDocument(t.Context(), col.GetCollectionId(), slow.GetId(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := cs.GetDocument(t.Context(), col.GetCollectionId(), slow.GetId()); err != nil || d.GetStatus() != xai.DocumentProcessing {
+		t.Errorf("slow document right after add: %v %v", d.GetStatus(), err)
+	}
+	waited, err := cs.WaitForDocument(t.Context(), col.GetCollectionId(), slow.GetId(), xai.PollOptions{Interval: 50 * time.Millisecond, Timeout: 5 * time.Second})
+	if err != nil || waited.GetStatus() != xai.DocumentProcessed {
+		t.Errorf("WaitForDocument: %v %v", waited.GetStatus(), err)
+	}
+
+	failed, err := c.Files().UploadBytes(t.Context(), "test-failed", []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.AddDocument(t.Context(), col.GetCollectionId(), failed.GetId(), nil); err != nil {
+		t.Fatal(err)
+	}
+	var indexErr *xai.DocumentIndexingError
+	if _, err := cs.WaitForDocument(t.Context(), col.GetCollectionId(), failed.GetId(), xai.PollOptions{Interval: 10 * time.Millisecond}); !errors.As(err, &indexErr) || indexErr.Message != "Processing failed" {
+		t.Errorf("failed document: %v", err)
+	}
+
+	var docs int
+	for _, err := range cs.Documents(t.Context(), col.GetCollectionId(), xai.Descending) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		docs++
+	}
+	if docs != 3 {
+		t.Errorf("documents = %d", docs)
+	}
+	if err := cs.RemoveDocument(t.Context(), col.GetCollectionId(), failed.GetId()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.GetDocument(t.Context(), col.GetCollectionId(), failed.GetId()); !errors.Is(err, xai.ErrNotFound) {
+		t.Errorf("after remove: %v", err)
+	}
+	if err := cs.Delete(t.Context(), col.GetCollectionId()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cs.Get(t.Context(), col.GetCollectionId()); !errors.Is(err, xai.ErrNotFound) {
+		t.Errorf("after delete: %v", err)
+	}
+
+	// The management key is checked separately from the API key.
+	wrong := newClient(t, xai.WithManagementAPIKey("nope"))
+	if _, err := wrong.Collections().Get(t.Context(), "x"); !errors.Is(err, xai.ErrUnauthenticated) {
+		t.Errorf("wrong management key: %v", err)
+	}
+	none, err := xai.New(xai.WithAPIKey(testAPIKey), xai.WithAPIHost(serverAddr), xai.WithInsecure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer none.Close()
+	if _, err := none.Collections().Get(t.Context(), "x"); !errors.Is(err, xai.ErrMissingManagementAPIKey) {
+		t.Errorf("no management key: %v", err)
 	}
 }

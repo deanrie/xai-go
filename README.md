@@ -113,7 +113,7 @@ XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
 | Image (generate, batch, url or base64, edit inputs) | done |
 | Video (start, poll, wait, extend) | done |
 | Batch (create, add, wait, results, cancel) | done |
-| Collections | blocked: `collections.proto` is not published in xai-proto, see [xai-proto#83](https://github.com/xai-org/xai-proto/issues/83) |
+| Collections (create, list, documents, wait for indexing, delete) | done, from recovered protos (see below) |
 | Documents (search with semantic, keyword, hybrid retrieval) | done |
 | Sample (legacy) | not planned |
 
@@ -130,6 +130,8 @@ XAI_SDK_PYTHON_DIR=~/src/xai-sdk-python go test ./tests/conformance/
 ## Regenerating the stubs
 
 `scripts/regen.sh` clones xai-proto at the commit recorded in `internal/gen/XAI_PROTO_COMMIT`, runs `buf generate` with the Go plugins from xai-proto's `buf.gen.yaml`, and copies the result into `internal/gen`. CI checks that the committed stubs match.
+
+`collections.proto`, `shared.proto` and `types.proto` are not published in xai-proto ([xai-proto#83](https://github.com/xai-org/xai-proto/issues/83)). Until they are, `regen.sh` takes them from [`deanrie/xai-proto@collections-from-descriptor`](https://github.com/deanrie/xai-proto/tree/collections-from-descriptor), where they are rendered from the descriptors compiled into the Python SDK and checked identical to them; the commit is recorded in `internal/gen/RECOVERED_PROTO_COMMIT`. They generate into their own Go packages (`collections`, `shared`, `rag`) because their proto packages differ from `xai_api`.
 
 ## License
 
