@@ -42,7 +42,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `models.list_language_models()` and the other five | `Models.ListLanguageModels(ctx)` and the other five |
 | `tokenizer.tokenize_text(text, model)` | `Tokenize.TokenizeText(ctx, text, model)` |
 | `auth.get_api_key_info()` | `Auth.GetAPIKeyInfo(ctx)` |
-| `embed.create(...)` (where present) | `Embed.Embed(ctx, model, inputs...)`, `Embed.EmbedBase64(...)` |
+| (no Python client for the `Embedder` service) | `Embed.Embed(ctx, model, inputs...)`, `Embed.EmbedBase64(...)` |
 | `collections.create(name, ...)` | `Collections.Create(ctx, name, opts...)` |
 | `collections.list(...)`, `.get(id)`, `.update(id, ...)`, `.delete(id)` | `Collections.All(ctx, order)`, `.Get`, `.Update(ctx, id, opts...)`, `.Delete` |
 | `collections.search(query, collection_ids, ...)` | `Documents.Search(ctx, query, collectionIDs, opts...)` |
