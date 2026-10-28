@@ -526,3 +526,21 @@ func TestDocumentsSearch(t *testing.T) {
 		t.Errorf("no collections: %v", err)
 	}
 }
+
+// tests/sync/chat_test.py::test_compact: the server drops all but two
+// messages; the chat is left with one encrypted user message.
+func TestChatCompact(t *testing.T) {
+	c := newClient(t)
+	chat := c.Chat("grok-4").Append(xai.System("s")).Append(xai.User(xai.Text("a"))).Append(xai.Assistant("b")).Append(xai.User(xai.Text("c")))
+	resp, err := chat.Compact(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetDroppedMessageCount() != 2 || resp.GetEncryptedContent() == "" {
+		t.Errorf("compact = %v", resp)
+	}
+	msgs := chat.Messages()
+	if len(msgs) != 1 || msgs[0].GetEncryptedContent() != resp.GetEncryptedContent() || len(msgs[0].GetContent()) != 0 {
+		t.Errorf("messages after compact = %v", msgs)
+	}
+}

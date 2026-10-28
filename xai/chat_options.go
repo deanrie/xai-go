@@ -334,3 +334,7 @@ func MCPTool(label, url, description string, opts ...MCPOption) *Tool {
 	}
 	return &Tool{Tool: &v1.Tool_Mcp{Mcp: m}}
 }
+
+// Developer returns a developer message. Models up to grok-4.1 treat it as
+// a system message.
+func Developer(text string) *Message { return textMessage(v1.MessageRole_ROLE_DEVELOPER, text) }

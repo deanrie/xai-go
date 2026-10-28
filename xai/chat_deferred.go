@@ -107,3 +107,33 @@ func (c *Client) DeleteStoredCompletion(ctx context.Context, responseID string) 
 	_, err := v1.NewChatClient(c.conn).DeleteStoredCompletion(ctx, &v1.DeleteStoredCompletionRequest{ResponseId: responseID})
 	return wrapErr(err)
 }
+
+// CompactContextResponse is the server's compacted form of a conversation.
+type CompactContextResponse = v1.CompactContextResponse
+
+// CompactContext asks the server to compress the current messages into one
+// encrypted message, without changing this Chat. Use Compact to apply it.
+func (ch *Chat) CompactContext(ctx context.Context) (*CompactContextResponse, error) {
+	if ch.err != nil {
+		return nil, ch.err
+	}
+	ctx, cancel := ch.c.CallContext(ctx)
+	defer cancel()
+	resp, err := v1.NewChatClient(ch.c.conn).CompactContext(ctx, &v1.CompactContextRequest{Model: ch.req.GetModel(), Input: ch.req.GetMessages()})
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	return resp, nil
+}
+
+// Compact replaces the conversation with its compacted form: all messages
+// become one user message carrying the encrypted content, the same way the
+// Python SDK's chat.compact() does.
+func (ch *Chat) Compact(ctx context.Context) (*CompactContextResponse, error) {
+	resp, err := ch.CompactContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ch.req.Messages = []*Message{{Role: v1.MessageRole_ROLE_USER, EncryptedContent: resp.GetEncryptedContent()}}
+	return resp, nil
+}
