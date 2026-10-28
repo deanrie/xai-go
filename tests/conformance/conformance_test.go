@@ -660,6 +660,14 @@ func TestCollections(t *testing.T) {
 	if err != nil || one.GetStatus() != xai.DocumentProcessed || one.GetFields()["lang"] != "en" {
 		t.Errorf("UploadDocument: %v %v", one, err)
 	}
+	name := "renamed.txt"
+	updated, err := cs.UpdateDocument(t.Context(), col2.GetCollectionId(), one.GetFileMetadata().GetFileId(), xai.DocumentUpdate{Name: &name, Fields: map[string]string{"lang": "de"}})
+	if err != nil || updated.GetFields()["lang"] != "de" {
+		t.Errorf("UpdateDocument: %v %v", updated, err)
+	}
+	if _, err := cs.UpdateDocument(t.Context(), col2.GetCollectionId(), one.GetFileMetadata().GetFileId(), xai.DocumentUpdate{}); !errors.Is(err, xai.ErrInvalidArgument) {
+		t.Errorf("empty update: %v", err)
+	}
 	batch, err := cs.BatchGetDocuments(t.Context(), col2.GetCollectionId(), one.GetFileMetadata().GetFileId(), "missing")
 	if err != nil || len(batch) != 1 {
 		t.Errorf("BatchGetDocuments: %d %v", len(batch), err)
@@ -677,5 +685,30 @@ func TestCollections(t *testing.T) {
 	defer none.Close()
 	if _, err := none.Collections().Get(t.Context(), "x"); !errors.Is(err, xai.ErrMissingManagementAPIKey) {
 		t.Errorf("no management key: %v", err)
+	}
+}
+
+// tests/sync/chat_test.py::test_stream_batch: the server streams every
+// output's chunks in one stream; each Response ends with the full text.
+func TestChatStreamBatch(t *testing.T) {
+	c := newClient(t)
+	stream := c.Chat("grok-4").Append(xai.User(xai.Text("hi"))).StreamBatch(t.Context(), 2)
+	var steps int
+	for _, chunks := range stream.All() {
+		steps++
+		if len(chunks) != 2 {
+			t.Fatalf("chunks = %d", len(chunks))
+		}
+	}
+	if err := stream.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if steps == 0 {
+		t.Fatal("no chunks")
+	}
+	for i, r := range stream.Responses() {
+		if r.Content() == "" {
+			t.Errorf("response %d empty", i)
+		}
 	}
 }

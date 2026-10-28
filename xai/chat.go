@@ -145,11 +145,7 @@ func (ch *Chat) SampleBatch(ctx context.Context, n int) ([]*Response, error) {
 	if err != nil {
 		return nil, wrapErr(err)
 	}
-	out := make([]*Response, n)
-	for i := range out {
-		out[i] = newResponse(pb, int32(i))
-	}
-	return out, nil
+	return newResponseBatch(pb, n), nil
 }
 
 // Stream requests one completion as a stream. The iterator yields the
@@ -257,21 +253,40 @@ func autoDetectMultiOutput(index int32, indexes []int32) int32 {
 type Response struct {
 	pb    *v1.GetChatCompletionResponse
 	index int32
+	acc   *accumulator
+}
 
+// accumulator holds the streamed text per output. Responses that read the
+// same stream (SampleBatch, StreamBatch) share one, so every index sees
+// every chunk no matter which Response is read first.
+type accumulator struct {
 	content   map[int32]*strings.Builder
 	reasoning map[int32]*strings.Builder
 	encrypted map[int32]*strings.Builder
 	dirty     bool
 }
 
-func newResponse(pb *v1.GetChatCompletionResponse, index int32) *Response {
-	return &Response{
-		pb:        pb,
-		index:     index,
+func newAccumulator() *accumulator {
+	return &accumulator{
 		content:   map[int32]*strings.Builder{},
 		reasoning: map[int32]*strings.Builder{},
 		encrypted: map[int32]*strings.Builder{},
 	}
+}
+
+func newResponse(pb *v1.GetChatCompletionResponse, index int32) *Response {
+	return &Response{pb: pb, index: index, acc: newAccumulator()}
+}
+
+// newResponseBatch returns n Responses over one proto and one accumulator,
+// one per output index.
+func newResponseBatch(pb *v1.GetChatCompletionResponse, n int) []*Response {
+	acc := newAccumulator()
+	out := make([]*Response, n)
+	for i := range out {
+		out[i] = &Response{pb: pb, index: int32(i), acc: acc}
+	}
+	return out
 }
 
 // processChunk folds a streamed chunk into the response. Text deltas go to
@@ -301,9 +316,9 @@ func (r *Response) processChunk(c *v1.GetChatCompletionChunk) {
 		out.Message.ToolCalls = append(out.Message.ToolCalls, oc.GetDelta().GetToolCalls()...)
 		out.Message.Citations = append(out.Message.Citations, oc.GetDelta().GetCitations()...)
 		out.FinishReason = oc.GetFinishReason()
-		appendDelta(r.content, oc.GetIndex(), oc.GetDelta().GetContent(), &r.dirty)
-		appendDelta(r.reasoning, oc.GetIndex(), oc.GetDelta().GetReasoningContent(), &r.dirty)
-		appendDelta(r.encrypted, oc.GetIndex(), oc.GetDelta().GetEncryptedContent(), &r.dirty)
+		appendDelta(r.acc.content, oc.GetIndex(), oc.GetDelta().GetContent(), &r.acc.dirty)
+		appendDelta(r.acc.reasoning, oc.GetIndex(), oc.GetDelta().GetReasoningContent(), &r.acc.dirty)
+		appendDelta(r.acc.encrypted, oc.GetIndex(), oc.GetDelta().GetEncryptedContent(), &r.acc.dirty)
 	}
 }
 
@@ -322,25 +337,25 @@ func appendDelta(m map[int32]*strings.Builder, i int32, s string, dirty *bool) {
 
 // sync writes the buffered text into the proto.
 func (r *Response) sync() {
-	if !r.dirty {
+	if !r.acc.dirty {
 		return
 	}
-	for i, b := range r.content {
+	for i, b := range r.acc.content {
 		if int(i) < len(r.pb.Outputs) {
 			r.pb.Outputs[i].Message.Content = b.String()
 		}
 	}
-	for i, b := range r.reasoning {
+	for i, b := range r.acc.reasoning {
 		if int(i) < len(r.pb.Outputs) {
 			r.pb.Outputs[i].Message.ReasoningContent = b.String()
 		}
 	}
-	for i, b := range r.encrypted {
+	for i, b := range r.acc.encrypted {
 		if int(i) < len(r.pb.Outputs) {
 			r.pb.Outputs[i].Message.EncryptedContent = b.String()
 		}
 	}
-	r.dirty = false
+	r.acc.dirty = false
 }
 
 // output returns the last assistant output this response exposes.
@@ -452,3 +467,78 @@ func (c *Chunk) outputs() []*v1.CompletionOutputChunk {
 	}
 	return outs
 }
+
+// StreamBatch streams n completions in one request. Each yielded step gives
+// the n accumulated Responses and the n Chunks for this message; chunk i
+// holds what arrived for output i in this message, which may be nothing.
+func (ch *Chat) StreamBatch(ctx context.Context, n int) *ChatBatchStream {
+	if ch.err != nil {
+		return &ChatBatchStream{err: ch.err, cancel: func() {}}
+	}
+	if n < 1 {
+		return &ChatBatchStream{err: &ValidationError{Param: "n", Value: n, Accepted: []string{"1 or more"}}, cancel: func() {}}
+	}
+	ctx, cancel := ch.c.CallContext(ctx)
+	stream, err := v1.NewChatClient(ch.c.conn).GetCompletionChunk(ctx, ch.request(int32(n)))
+	if err != nil {
+		cancel()
+		return &ChatBatchStream{err: wrapErr(err), cancel: func() {}}
+	}
+	outs := make([]*v1.CompletionOutput, n)
+	for i := range outs {
+		outs[i] = &v1.CompletionOutput{Index: int32(i)}
+	}
+	return &ChatBatchStream{
+		stream:    stream,
+		cancel:    cancel,
+		responses: newResponseBatch(&v1.GetChatCompletionResponse{Outputs: outs}, n),
+	}
+}
+
+// ChatBatchStream is the result of Chat.StreamBatch.
+type ChatBatchStream struct {
+	stream    v1.Chat_GetCompletionChunkClient
+	cancel    context.CancelFunc
+	responses []*Response
+	err       error
+	done      bool
+}
+
+// All iterates over the stream; use it with range.
+func (s *ChatBatchStream) All() iter.Seq2[[]*Response, []*Chunk] {
+	return func(yield func([]*Response, []*Chunk) bool) {
+		if s.err != nil || s.done {
+			return
+		}
+		defer s.cancel()
+		for {
+			pb, err := s.stream.Recv()
+			if errors.Is(err, io.EOF) {
+				s.done = true
+				return
+			}
+			if err != nil {
+				s.err = wrapErr(err)
+				s.done = true
+				return
+			}
+			// One accumulator behind every Response: processing through the
+			// first one is enough.
+			s.responses[0].processChunk(pb)
+			chunks := make([]*Chunk, len(s.responses))
+			for i := range chunks {
+				chunks[i] = &Chunk{pb: pb, index: int32(i)}
+			}
+			if !yield(s.responses, chunks) {
+				s.done = true
+				return
+			}
+		}
+	}
+}
+
+// Err returns the error that ended the stream, or nil after a clean end.
+func (s *ChatBatchStream) Err() error { return s.err }
+
+// Responses returns the accumulated responses; complete once All has ended.
+func (s *ChatBatchStream) Responses() []*Response { return s.responses }

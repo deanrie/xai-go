@@ -252,3 +252,46 @@ func (f *Files) ContentTo(ctx context.Context, fileID string, w io.Writer) error
 		}
 	}
 }
+
+// PublicURL is a shareable link to a file.
+type PublicURL struct {
+	URL string
+	// ExpiresAt is zero when the link does not expire on its own.
+	ExpiresAt time.Time
+}
+
+// CreatePublicURL makes a file reachable without authentication. A zero
+// expiresAfter inherits the file's own expiry (or none); otherwise it must
+// be between one hour and thirty days.
+func (f *Files) CreatePublicURL(ctx context.Context, fileID string, expiresAfter time.Duration) (*PublicURL, error) {
+	req := &v1.CreatePublicUrlRequest{FileId: fileID}
+	if expiresAfter != 0 {
+		if expiresAfter < time.Hour || expiresAfter > 30*24*time.Hour {
+			return nil, &ValidationError{Param: "expires_after", Value: expiresAfter, Accepted: []string{"1h to 720h"}}
+		}
+		req.ExpiresAfter = proto.Int64(int64(expiresAfter / time.Second))
+	}
+	ctx, cancel := f.c.CallContext(ctx)
+	defer cancel()
+	resp, err := v1.NewFilesClient(f.c.conn).CreatePublicUrl(ctx, req)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	out := &PublicURL{URL: resp.GetPublicUrl()}
+	if resp.ExpiresAt != nil {
+		out.ExpiresAt = resp.GetExpiresAt().AsTime()
+	}
+	return out, nil
+}
+
+// RevokePublicURL removes a file's public link. It reports whether a link
+// was there to revoke.
+func (f *Files) RevokePublicURL(ctx context.Context, fileID string) (bool, error) {
+	ctx, cancel := f.c.CallContext(ctx)
+	defer cancel()
+	resp, err := v1.NewFilesClient(f.c.conn).RevokePublicUrl(ctx, &v1.RevokePublicUrlRequest{FileId: fileID})
+	if err != nil {
+		return false, wrapErr(err)
+	}
+	return resp.GetRevoked(), nil
+}

@@ -38,11 +38,7 @@ func (ch *Chat) DeferBatch(ctx context.Context, n int, opts PollOptions) ([]*Res
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*Response, n)
-	for i := range out {
-		out[i] = newResponse(pb, int32(i))
-	}
-	return out, nil
+	return newResponseBatch(pb, n), nil
 }
 
 func (ch *Chat) deferN(ctx context.Context, n int, opts PollOptions) (*v1.GetChatCompletionResponse, error) {

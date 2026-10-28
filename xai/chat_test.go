@@ -29,12 +29,10 @@ func chunk(id string, deltas ...string) *v1.GetChatCompletionChunk {
 // read-order case from xai-sdk-python#202 / #240: every exposed output reads
 // the stream regardless of which Response is read first.
 func TestResponseAccumulatesChunksForEveryOutput(t *testing.T) {
-	r := newResponse(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{}}}, 0)
+	batch := newResponseBatch(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{}}}, 2)
+	r, second := batch[0], batch[1]
 	r.processChunk(chunk("r1", "Hel", "Bon"))
 	r.processChunk(chunk("r1", "lo", "jour"))
-
-	second := newResponse(r.pb, 1)
-	second.content, second.reasoning, second.encrypted, second.dirty = r.content, r.reasoning, r.encrypted, true
 	if got := second.Content(); got != "Bonjour" {
 		t.Fatalf("second output read before the first: %q", got)
 	}
@@ -334,5 +332,38 @@ func TestChatStreamReportsTransportErrors(t *testing.T) {
 	// A second range does nothing and keeps the error.
 	for range s.All() {
 		t.Fatal("stream yielded after it ended")
+	}
+}
+
+// The stream_batch read-order case from xai-sdk-python#202 / #240: reading
+// the second response first must not lose anything.
+func TestChatBatchStreamSharesOneAccumulator(t *testing.T) {
+	s := &ChatBatchStream{
+		stream:    &fakeChunkStream{chunks: []*v1.GetChatCompletionChunk{chunk("b", "Hel", "Bon"), chunk("b", "lo", "jour")}},
+		cancel:    func() {},
+		responses: newResponseBatch(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{Index: 0}, {Index: 1}}}, 2),
+	}
+	steps := 0
+	for resps, chunks := range s.All() {
+		steps++
+		if len(resps) != 2 || len(chunks) != 2 {
+			t.Fatalf("shape: %d %d", len(resps), len(chunks))
+		}
+		_ = resps[1].Content() // read the second one first
+	}
+	if s.Err() != nil || steps != 2 {
+		t.Fatalf("err=%v steps=%d", s.Err(), steps)
+	}
+	r := s.Responses()
+	if r[1].Content() != "Bonjour" || r[0].Content() != "Hello" {
+		t.Errorf("contents: %q %q", r[0].Content(), r[1].Content())
+	}
+}
+
+func TestFilesPublicURLValidation(t *testing.T) {
+	c, _ := New(WithAPIKey("k"), WithInsecure())
+	defer c.Close()
+	if _, err := c.Files().CreatePublicURL(t.Context(), "f", time.Minute); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("expires_after below 1h: %v", err)
 	}
 }

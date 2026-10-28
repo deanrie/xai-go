@@ -478,3 +478,35 @@ func (cs *Collections) UploadDocument(ctx context.Context, collectionID, name st
 	}
 	return cs.WaitForDocument(ctx, collectionID, file.GetId(), opts)
 }
+
+// DocumentUpdate carries the optional changes for UpdateDocument. Nil
+// pointers and a nil Fields map leave that part untouched.
+type DocumentUpdate struct {
+	Name        *string
+	Data        []byte
+	ContentType *string
+	Fields      map[string]string
+}
+
+// UpdateDocument replaces a document's name, content, content type or
+// metadata fields; the server re-indexes when the content changes.
+func (cs *Collections) UpdateDocument(ctx context.Context, collectionID, fileID string, u DocumentUpdate) (*DocumentMetadata, error) {
+	if u.Name == nil && u.Data == nil && u.ContentType == nil && u.Fields == nil {
+		return nil, &ValidationError{Param: "update", Value: "empty", Accepted: []string{"at least one of Name, Data, ContentType, Fields"}}
+	}
+	req := &collections.UpdateDocumentRequest{CollectionId: collectionID, FileId: fileID, Name: u.Name, ContentType: u.ContentType, Fields: u.Fields}
+	if u.Data != nil {
+		req.Data = u.Data
+	}
+	stub, err := cs.stub()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := cs.c.ManagementCallContext(ctx)
+	defer cancel()
+	doc, err := stub.UpdateDocument(ctx, req)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	return doc, nil
+}

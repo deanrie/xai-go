@@ -105,19 +105,21 @@ XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
 | --- | --- |
 | Models | done |
 | Tokenize | done |
-| Chat (sample, stream, batch, function tools, multi-output) | done |
+| Chat (sample, stream, batch, stream batch, function tools, multi-output) | done |
 | Chat (deferred, stored completions, compact context) | done |
 | Chat (web_search, x_search, collections_search, MCP, code_execution options) | done |
-| Files (upload, list, content, delete) | done |
+| Files (upload, list, content, delete, public URLs) | done |
 | Embed, Auth | done |
 | Image (generate, batch, url or base64, edit inputs) | done |
 | Video (start, poll, wait, extend) | done |
 | Batch (create, add, wait, results, cancel) | done |
-| Collections (create, update, list, documents, upload and wait, batch get, delete) | done, from recovered protos (see below) |
+| Collections (create, update, list, documents, upload and wait, update document, batch get, delete) | done, from recovered protos (see below) |
 | Documents (search with semantic, keyword, hybrid retrieval) | done |
 | Sample (legacy) | not planned |
 
 Conformance is checked against the Python SDK's fake gRPC server (`tests/server.py` in xai-sdk-python), so behaviour that the two SDKs share is tested the same way.
+
+Coming from the Python SDK: [`docs/python-mapping.md`](docs/python-mapping.md) lists every Python method and its Go counterpart.
 
 ## Conformance tests
 
