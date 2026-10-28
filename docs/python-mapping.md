@@ -42,6 +42,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `models.list_language_models()` and the other five | `Models.ListLanguageModels(ctx)` and the other five |
 | `tokenizer.tokenize_text(text, model)` | `Tokenize.TokenizeText(ctx, text, model)` |
 | `auth.get_api_key_info()` | `Auth.GetAPIKeyInfo(ctx)` |
+| `Telemetry(...)` / `XAI_SDK_DISABLE_TRACING_SENSITIVE_ATTRIBUTES` | `WithTracerProvider(tp)`, `WithoutSensitiveAttributes()` |
 | (no Python client for the `Embedder` service) | `Embed.Embed(ctx, model, inputs...)`, `Embed.EmbedBase64(...)` |
 | `collections.create(name, ...)` | `Collections.Create(ctx, name, opts...)` (Collections is experimental: generated from recovered protos until xai-org/xai-proto#83 is resolved) |
 | `collections.list(...)`, `.get(id)`, `.update(id, ...)`, `.delete(id)` | `Collections.All(ctx, order)`, `.Get`, `.Update(ctx, id, opts...)`, `.Delete` |
@@ -63,5 +64,5 @@ Differences worth knowing:
 - `Image.URL()` and `Image.Base64()` distinguish "returned in the other format" (`ErrImageFormat`) from "withheld by moderation" (`ErrImageModerated`); the Python SDK raises `ValueError` for both.
 - `*Error` exposes `Status()` for server-attached details and `Retryable()`; the Python SDK leaves that to `grpc.RpcError`.
 - Image and video storage (`storage_options`) is `WithImageStorage` / `WithVideoStorage` with a `StorageOptions` value.
-- Telemetry (OpenTelemetry spans) is not implemented.
+- Telemetry: `WithTracerProvider` instead of the `Telemetry` config object; span names and `gen_ai.*` attributes match, `WithoutSensitiveAttributes` stands in for `XAI_SDK_DISABLE_TRACING_SENSITIVE_ATTRIBUTES`. The OTLP exporter is the application's choice; the client only depends on the OpenTelemetry API.
 - `Sample` (the legacy sampling service) is not planned.

@@ -92,7 +92,7 @@ func (c *Client) Documents() *Documents { return &Documents{c: c} }
 
 // Search returns the chunks in the given collections that best match the
 // query.
-func (d *Documents) Search(ctx context.Context, query string, collectionIDs []string, opts ...SearchOption) ([]*SearchMatch, error) {
+func (d *Documents) Search(ctx context.Context, query string, collectionIDs []string, opts ...SearchOption) (_ []*SearchMatch, err error) {
 	if len(collectionIDs) == 0 {
 		return nil, &ValidationError{Param: "collection_ids", Value: 0, Accepted: []string{"1 or more collection ids"}}
 	}
@@ -100,6 +100,8 @@ func (d *Documents) Search(ctx context.Context, query string, collectionIDs []st
 	for _, o := range opts {
 		o(req)
 	}
+	ctx, end := d.c.startSpan(ctx, "documents.search", d.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := d.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewDocumentsClient(d.c.conn).Search(ctx, req)

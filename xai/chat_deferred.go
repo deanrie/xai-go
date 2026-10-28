@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	v1 "github.com/deanrie/xai-go/internal/gen/xai/api/v1"
@@ -44,10 +46,19 @@ func (ch *Chat) DeferBatch(ctx context.Context, n int, opts PollOptions) ([]*Res
 	return newResponseBatch(pb, n), nil
 }
 
-func (ch *Chat) deferN(ctx context.Context, n int, opts PollOptions) (*v1.GetChatCompletionResponse, error) {
+func (ch *Chat) deferN(ctx context.Context, n int, opts PollOptions) (result *v1.GetChatCompletionResponse, err error) {
 	if ch.err != nil {
 		return nil, ch.err
 	}
+	op := "defer"
+	if n > 1 {
+		op = "defer_batch"
+	}
+	ctx, end := ch.c.startSpan(ctx, "chat."+op+" "+ch.req.GetModel(), ch.chatRequestAttrs(op)...)
+	defer func() {
+		trace.SpanFromContext(ctx).SetAttributes(chatResponseAttrs(result)...)
+		end(err)
+	}()
 	client := v1.NewChatClient(ch.c.conn)
 
 	startCtx, cancel := ch.c.CallContext(ctx)
@@ -57,7 +68,6 @@ func (ch *Chat) deferN(ctx context.Context, n int, opts PollOptions) (*v1.GetCha
 		return nil, wrapErr(err)
 	}
 
-	var result *v1.GetChatCompletionResponse
 	err = poll(ctx, opts, func(ctx context.Context) (bool, error) {
 		ctx, cancel := ch.c.CallContext(ctx)
 		defer cancel()
@@ -112,13 +122,15 @@ type CompactContextResponse = v1.CompactContextResponse
 
 // CompactContext asks the server to compress the current messages into one
 // encrypted message, without changing this Chat. Use Compact to apply it.
-func (ch *Chat) CompactContext(ctx context.Context) (*CompactContextResponse, error) {
+func (ch *Chat) CompactContext(ctx context.Context) (resp *CompactContextResponse, err error) {
 	if ch.err != nil {
 		return nil, ch.err
 	}
+	ctx, end := ch.c.startSpan(ctx, "chat.compact_context "+ch.req.GetModel(), ch.chatRequestAttrs("compact_context")...)
+	defer func() { end(err) }()
 	ctx, cancel := ch.c.CallContext(ctx)
 	defer cancel()
-	resp, err := v1.NewChatClient(ch.c.conn).CompactContext(ctx, &v1.CompactContextRequest{Model: ch.req.GetModel(), Input: ch.req.GetMessages()})
+	resp, err = v1.NewChatClient(ch.c.conn).CompactContext(ctx, &v1.CompactContextRequest{Model: ch.req.GetModel(), Input: ch.req.GetMessages()})
 	if err != nil {
 		return nil, wrapErr(err)
 	}
@@ -149,12 +161,22 @@ func (ch *Chat) SampleJSON(ctx context.Context, schema string, out any) (*Respon
 	req := proto.Clone(ch.req).(*v1.GetCompletionsRequest)
 	req.N = proto.Int32(1)
 	req.ResponseFormat = &v1.ResponseFormat{FormatType: v1.FormatType_FORMAT_TYPE_JSON_SCHEMA, Schema: proto.String(schema)}
+	attrs := ch.chatRequestAttrs("parse")
+	for i := range attrs {
+		if attrs[i].Key == "gen_ai.output.type" {
+			attrs[i] = attribute.String("gen_ai.output.type", "json")
+		}
+	}
+	ctx, end := ch.c.startSpan(ctx, "chat.parse "+ch.req.GetModel(), attrs...)
 	ctx, cancel := ch.c.CallContext(ctx)
 	defer cancel()
 	pb, err := v1.NewChatClient(ch.c.conn).GetCompletion(ctx, req)
 	if err != nil {
+		end(wrapErr(err))
 		return nil, wrapErr(err)
 	}
+	trace.SpanFromContext(ctx).SetAttributes(chatResponseAttrs(pb)...)
+	end(nil)
 	resp := newResponse(pb, autoDetectMultiOutput(ch.initialIndex(), outputIndexes(pb.GetOutputs())))
 	if err := json.Unmarshal([]byte(resp.Content()), out); err != nil {
 		return resp, &JSONError{Content: resp.Content(), Err: err}

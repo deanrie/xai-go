@@ -16,7 +16,9 @@ type Tokenize struct{ c *Client }
 func (c *Client) Tokenize() *Tokenize { return &Tokenize{c: c} }
 
 // TokenizeText tokenizes text with the tokenizer of the given model.
-func (t *Tokenize) TokenizeText(ctx context.Context, text, model string) ([]*Token, error) {
+func (t *Tokenize) TokenizeText(ctx context.Context, text, model string) (_ []*Token, err error) {
+	ctx, end := t.c.startSpan(ctx, "tokenize_text "+model, t.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := t.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewTokenizeClient(t.c.conn).TokenizeText(ctx, &v1.TokenizeTextRequest{Text: text, Model: model})

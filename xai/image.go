@@ -273,7 +273,7 @@ func (im *Images) GenerateBatch(ctx context.Context, model, prompt string, n int
 	return out, nil
 }
 
-func (im *Images) generate(ctx context.Context, model, prompt string, n int, opts []ImageOption) (*ImageResponse, error) {
+func (im *Images) generate(ctx context.Context, model, prompt string, n int, opts []ImageOption) (_ *ImageResponse, err error) {
 	r := &imageRequest{pb: &v1.GenerateImageRequest{
 		Prompt: prompt,
 		Model:  model,
@@ -286,6 +286,8 @@ func (im *Images) generate(ctx context.Context, model, prompt string, n int, opt
 	if r.err != nil {
 		return nil, r.err
 	}
+	ctx, end := im.c.startSpan(ctx, "image.sample "+model, im.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := im.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewImageClient(im.c.conn).GenerateImage(ctx, r.pb)

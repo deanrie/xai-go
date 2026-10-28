@@ -22,7 +22,9 @@ type Models struct{ c *Client }
 func (c *Client) Models() *Models { return &Models{c: c} }
 
 // ListLanguageModels returns every language model available to the API key.
-func (m *Models) ListLanguageModels(ctx context.Context) ([]*LanguageModel, error) {
+func (m *Models) ListLanguageModels(ctx context.Context) (_ []*LanguageModel, err error) {
+	ctx, end := m.c.startSpan(ctx, "list_language_models", m.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := m.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewModelsClient(m.c.conn).ListLanguageModels(ctx, &emptypb.Empty{})
@@ -33,7 +35,9 @@ func (m *Models) ListLanguageModels(ctx context.Context) ([]*LanguageModel, erro
 }
 
 // GetLanguageModel returns one language model by name.
-func (m *Models) GetLanguageModel(ctx context.Context, name string) (*LanguageModel, error) {
+func (m *Models) GetLanguageModel(ctx context.Context, name string) (_ *LanguageModel, err error) {
+	ctx, end := m.c.startSpan(ctx, "get_language_model "+name, m.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := m.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewModelsClient(m.c.conn).GetLanguageModel(ctx, &v1.GetModelRequest{Name: name})
@@ -41,7 +45,9 @@ func (m *Models) GetLanguageModel(ctx context.Context, name string) (*LanguageMo
 }
 
 // ListEmbeddingModels returns every embedding model available to the API key.
-func (m *Models) ListEmbeddingModels(ctx context.Context) ([]*EmbeddingModel, error) {
+func (m *Models) ListEmbeddingModels(ctx context.Context) (_ []*EmbeddingModel, err error) {
+	ctx, end := m.c.startSpan(ctx, "list_embedding_models", m.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := m.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewModelsClient(m.c.conn).ListEmbeddingModels(ctx, &emptypb.Empty{})
@@ -52,7 +58,9 @@ func (m *Models) ListEmbeddingModels(ctx context.Context) ([]*EmbeddingModel, er
 }
 
 // GetEmbeddingModel returns one embedding model by name.
-func (m *Models) GetEmbeddingModel(ctx context.Context, name string) (*EmbeddingModel, error) {
+func (m *Models) GetEmbeddingModel(ctx context.Context, name string) (_ *EmbeddingModel, err error) {
+	ctx, end := m.c.startSpan(ctx, "get_embedding_model "+name, m.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := m.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewModelsClient(m.c.conn).GetEmbeddingModel(ctx, &v1.GetModelRequest{Name: name})
@@ -61,7 +69,9 @@ func (m *Models) GetEmbeddingModel(ctx context.Context, name string) (*Embedding
 
 // ListImageGenerationModels returns every image generation model available
 // to the API key.
-func (m *Models) ListImageGenerationModels(ctx context.Context) ([]*ImageGenerationModel, error) {
+func (m *Models) ListImageGenerationModels(ctx context.Context) (_ []*ImageGenerationModel, err error) {
+	ctx, end := m.c.startSpan(ctx, "list_image_generation_models", m.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := m.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewModelsClient(m.c.conn).ListImageGenerationModels(ctx, &emptypb.Empty{})
@@ -72,7 +82,9 @@ func (m *Models) ListImageGenerationModels(ctx context.Context) ([]*ImageGenerat
 }
 
 // GetImageGenerationModel returns one image generation model by name.
-func (m *Models) GetImageGenerationModel(ctx context.Context, name string) (*ImageGenerationModel, error) {
+func (m *Models) GetImageGenerationModel(ctx context.Context, name string) (_ *ImageGenerationModel, err error) {
+	ctx, end := m.c.startSpan(ctx, "get_image_generation_model "+name, m.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := m.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewModelsClient(m.c.conn).GetImageGenerationModel(ctx, &v1.GetModelRequest{Name: name})

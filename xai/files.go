@@ -72,7 +72,9 @@ func (f *Files) Upload(ctx context.Context, name string, r io.Reader, size int64
 	return f.upload(ctx, name, r, size, opts)
 }
 
-func (f *Files) upload(ctx context.Context, name string, r io.Reader, size int64, opts []UploadOption) (*File, error) {
+func (f *Files) upload(ctx context.Context, name string, r io.Reader, size int64, opts []UploadOption) (_ *File, err error) {
+	ctx, end := f.c.startSpan(ctx, "file.upload", f.c.serverAttrs()...)
+	defer func() { end(err) }()
 	if name == "" {
 		return nil, &ValidationError{Param: "name", Value: name, Accepted: []string{"a non-empty file name"}}
 	}
@@ -141,7 +143,9 @@ type grpcClientStream interface {
 }
 
 // Get returns a file's metadata.
-func (f *Files) Get(ctx context.Context, fileID string) (*File, error) {
+func (f *Files) Get(ctx context.Context, fileID string) (_ *File, err error) {
+	ctx, end := f.c.startSpan(ctx, "file.get", f.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := f.c.CallContext(ctx)
 	defer cancel()
 	file, err := v1.NewFilesClient(f.c.conn).RetrieveFile(ctx, &v1.RetrieveFileRequest{FileId: fileID})
@@ -152,10 +156,12 @@ func (f *Files) Get(ctx context.Context, fileID string) (*File, error) {
 }
 
 // Delete removes a file.
-func (f *Files) Delete(ctx context.Context, fileID string) error {
+func (f *Files) Delete(ctx context.Context, fileID string) (err error) {
+	ctx, end := f.c.startSpan(ctx, "file.delete", f.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := f.c.CallContext(ctx)
 	defer cancel()
-	_, err := v1.NewFilesClient(f.c.conn).DeleteFile(ctx, &v1.DeleteFileRequest{FileId: fileID})
+	_, err = v1.NewFilesClient(f.c.conn).DeleteFile(ctx, &v1.DeleteFileRequest{FileId: fileID})
 	return wrapErr(err)
 }
 
@@ -176,7 +182,7 @@ type ListPage struct {
 
 // ListPage returns one page of at most limit files (1..100, 0 means the
 // server default of 100) starting at token.
-func (f *Files) ListPage(ctx context.Context, limit int32, order ListOrder, token string) (*ListPage, error) {
+func (f *Files) ListPage(ctx context.Context, limit int32, order ListOrder, token string) (_ *ListPage, err error) {
 	req := &v1.ListFilesRequest{Limit: limit}
 	switch order {
 	case Ascending:
@@ -189,6 +195,8 @@ func (f *Files) ListPage(ctx context.Context, limit int32, order ListOrder, toke
 	if token != "" {
 		req.PaginationToken = proto.String(token)
 	}
+	ctx, end := f.c.startSpan(ctx, "file.list", f.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := f.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewFilesClient(f.c.conn).ListFiles(ctx, req)
@@ -235,7 +243,9 @@ func (f *Files) Content(ctx context.Context, fileID string) ([]byte, error) {
 }
 
 // ContentTo streams a file's bytes into w.
-func (f *Files) ContentTo(ctx context.Context, fileID string, w io.Writer) error {
+func (f *Files) ContentTo(ctx context.Context, fileID string, w io.Writer) (err error) {
+	ctx, end := f.c.startSpan(ctx, "file.content", f.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := f.c.CallContext(ctx)
 	defer cancel()
 	stream, err := v1.NewFilesClient(f.c.conn).RetrieveFileContent(ctx, &v1.RetrieveFileContentRequest{FileId: fileID})
@@ -266,7 +276,7 @@ type PublicURL struct {
 // CreatePublicURL makes a file reachable without authentication. A zero
 // expiresAfter inherits the file's own expiry (or none); otherwise it must
 // be between one hour and thirty days.
-func (f *Files) CreatePublicURL(ctx context.Context, fileID string, expiresAfter time.Duration) (*PublicURL, error) {
+func (f *Files) CreatePublicURL(ctx context.Context, fileID string, expiresAfter time.Duration) (_ *PublicURL, err error) {
 	req := &v1.CreatePublicUrlRequest{FileId: fileID}
 	if expiresAfter != 0 {
 		if expiresAfter < time.Hour || expiresAfter > 30*24*time.Hour {
@@ -274,6 +284,8 @@ func (f *Files) CreatePublicURL(ctx context.Context, fileID string, expiresAfter
 		}
 		req.ExpiresAfter = proto.Int64(int64(expiresAfter / time.Second))
 	}
+	ctx, end := f.c.startSpan(ctx, "file.create_public_url", f.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := f.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewFilesClient(f.c.conn).CreatePublicUrl(ctx, req)
@@ -289,7 +301,9 @@ func (f *Files) CreatePublicURL(ctx context.Context, fileID string, expiresAfter
 
 // RevokePublicURL removes a file's public link. It reports whether a link
 // was there to revoke.
-func (f *Files) RevokePublicURL(ctx context.Context, fileID string) (bool, error) {
+func (f *Files) RevokePublicURL(ctx context.Context, fileID string) (_ bool, err error) {
+	ctx, end := f.c.startSpan(ctx, "file.revoke_public_url", f.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := f.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewFilesClient(f.c.conn).RevokePublicUrl(ctx, &v1.RevokePublicUrlRequest{FileId: fileID})

@@ -161,7 +161,7 @@ func (cs *Collections) stub() (collections.CollectionsClient, error) {
 }
 
 // Create creates a collection.
-func (cs *Collections) Create(ctx context.Context, name string, opts ...CollectionOption) (*CollectionMetadata, error) {
+func (cs *Collections) Create(ctx context.Context, name string, opts ...CollectionOption) (_ *CollectionMetadata, err error) {
 	req := &createCollection{pb: &collections.CreateCollectionRequest{CollectionName: name}}
 	for _, o := range opts {
 		o(req)
@@ -173,6 +173,8 @@ func (cs *Collections) Create(ctx context.Context, name string, opts ...Collecti
 	if err != nil {
 		return nil, err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.create_collection", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	meta, err := stub.CreateCollection(ctx, req.pb)
@@ -183,11 +185,13 @@ func (cs *Collections) Create(ctx context.Context, name string, opts ...Collecti
 }
 
 // Get returns a collection's metadata.
-func (cs *Collections) Get(ctx context.Context, collectionID string) (*CollectionMetadata, error) {
+func (cs *Collections) Get(ctx context.Context, collectionID string) (_ *CollectionMetadata, err error) {
 	stub, err := cs.stub()
 	if err != nil {
 		return nil, err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.get_collection_metadata", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	meta, err := stub.GetCollectionMetadata(ctx, &collections.GetCollectionMetadataRequest{CollectionId: collectionID})
@@ -198,11 +202,13 @@ func (cs *Collections) Get(ctx context.Context, collectionID string) (*Collectio
 }
 
 // Delete removes a collection.
-func (cs *Collections) Delete(ctx context.Context, collectionID string) error {
+func (cs *Collections) Delete(ctx context.Context, collectionID string) (err error) {
 	stub, err := cs.stub()
 	if err != nil {
 		return err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.delete_collection", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	_, err = stub.DeleteCollection(ctx, &collections.DeleteCollectionRequest{CollectionId: collectionID})
@@ -263,11 +269,13 @@ func sharedOrdering(order ListOrder) (shared.Ordering, error) {
 // AddDocument attaches an already uploaded file (see Files.Upload) to a
 // collection with optional metadata fields. Indexing runs asynchronously;
 // use WaitForDocument to block until it is searchable.
-func (cs *Collections) AddDocument(ctx context.Context, collectionID, fileID string, fields map[string]string) error {
+func (cs *Collections) AddDocument(ctx context.Context, collectionID, fileID string, fields map[string]string) (err error) {
 	stub, err := cs.stub()
 	if err != nil {
 		return err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.add_existing_document", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	_, err = stub.AddDocumentToCollection(ctx, &collections.AddDocumentToCollectionRequest{CollectionId: collectionID, FileId: fileID, Fields: fields})
@@ -275,11 +283,13 @@ func (cs *Collections) AddDocument(ctx context.Context, collectionID, fileID str
 }
 
 // RemoveDocument detaches a file from a collection; the file itself stays.
-func (cs *Collections) RemoveDocument(ctx context.Context, collectionID, fileID string) error {
+func (cs *Collections) RemoveDocument(ctx context.Context, collectionID, fileID string) (err error) {
 	stub, err := cs.stub()
 	if err != nil {
 		return err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.remove_document", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	_, err = stub.RemoveDocumentFromCollection(ctx, &collections.RemoveDocumentFromCollectionRequest{CollectionId: collectionID, FileId: fileID})
@@ -287,11 +297,13 @@ func (cs *Collections) RemoveDocument(ctx context.Context, collectionID, fileID 
 }
 
 // GetDocument returns a document's metadata and indexing status.
-func (cs *Collections) GetDocument(ctx context.Context, collectionID, fileID string) (*DocumentMetadata, error) {
+func (cs *Collections) GetDocument(ctx context.Context, collectionID, fileID string) (_ *DocumentMetadata, err error) {
 	stub, err := cs.stub()
 	if err != nil {
 		return nil, err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.get_document_metadata", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	doc, err := stub.GetDocumentMetadata(ctx, &collections.GetDocumentMetadataRequest{CollectionId: collectionID, FileId: fileID})
@@ -341,11 +353,13 @@ func (cs *Collections) Documents(ctx context.Context, collectionID string, order
 }
 
 // ReindexDocument re-runs indexing for a document.
-func (cs *Collections) ReindexDocument(ctx context.Context, collectionID, fileID string) error {
+func (cs *Collections) ReindexDocument(ctx context.Context, collectionID, fileID string) (err error) {
 	stub, err := cs.stub()
 	if err != nil {
 		return err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.reindex_document", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	_, err = stub.ReIndexDocument(ctx, &collections.ReIndexDocumentRequest{CollectionId: collectionID, FileId: fileID})
@@ -383,11 +397,13 @@ func (cs *Collections) WaitForDocument(ctx context.Context, collectionID, fileID
 
 // GenerateDescription asks the server to write a description of the
 // collection from its documents.
-func (cs *Collections) GenerateDescription(ctx context.Context, collectionID string) (string, error) {
+func (cs *Collections) GenerateDescription(ctx context.Context, collectionID string) (_ string, err error) {
 	stub, err := cs.stub()
 	if err != nil {
 		return "", err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.generate_collection_description", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	resp, err := stub.GenerateCollectionDescription(ctx, &collections.GenerateCollectionDescriptionRequest{CollectionId: collectionID})
@@ -434,7 +450,7 @@ func RemoveFieldDefinition(key string) UpdateOption {
 }
 
 // Update changes a collection's name, description, chunking or fields.
-func (cs *Collections) Update(ctx context.Context, collectionID string, opts ...UpdateOption) (*CollectionMetadata, error) {
+func (cs *Collections) Update(ctx context.Context, collectionID string, opts ...UpdateOption) (_ *CollectionMetadata, err error) {
 	if len(opts) == 0 {
 		return nil, &ValidationError{Param: "opts", Value: 0, Accepted: []string{"at least one UpdateOption"}}
 	}
@@ -446,6 +462,8 @@ func (cs *Collections) Update(ctx context.Context, collectionID string, opts ...
 	if err != nil {
 		return nil, err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.update_collection", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	meta, err := stub.UpdateCollection(ctx, req)
@@ -457,11 +475,13 @@ func (cs *Collections) Update(ctx context.Context, collectionID string, opts ...
 
 // BatchGetDocuments returns metadata for several documents at once; ids
 // the collection does not know are left out.
-func (cs *Collections) BatchGetDocuments(ctx context.Context, collectionID string, fileIDs ...string) ([]*DocumentMetadata, error) {
+func (cs *Collections) BatchGetDocuments(ctx context.Context, collectionID string, fileIDs ...string) (_ []*DocumentMetadata, err error) {
 	stub, err := cs.stub()
 	if err != nil {
 		return nil, err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.batch_get_documents", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	resp, err := stub.BatchGetDocuments(ctx, &collections.BatchGetDocumentsRequest{CollectionId: collectionID, FileIds: fileIDs})
@@ -496,7 +516,7 @@ type DocumentUpdate struct {
 
 // UpdateDocument replaces a document's name, content, content type or
 // metadata fields; the server re-indexes when the content changes.
-func (cs *Collections) UpdateDocument(ctx context.Context, collectionID, fileID string, u DocumentUpdate) (*DocumentMetadata, error) {
+func (cs *Collections) UpdateDocument(ctx context.Context, collectionID, fileID string, u DocumentUpdate) (_ *DocumentMetadata, err error) {
 	if u.Name == nil && u.Data == nil && u.ContentType == nil && u.Fields == nil {
 		return nil, &ValidationError{Param: "update", Value: "empty", Accepted: []string{"at least one of Name, Data, ContentType, Fields"}}
 	}
@@ -508,6 +528,8 @@ func (cs *Collections) UpdateDocument(ctx context.Context, collectionID, fileID 
 	if err != nil {
 		return nil, err
 	}
+	ctx, end := cs.c.startSpan(ctx, "collections.update_document", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := cs.c.ManagementCallContext(ctx)
 	defer cancel()
 	doc, err := stub.UpdateDocument(ctx, req)

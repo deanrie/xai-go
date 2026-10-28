@@ -162,7 +162,7 @@ type Videos struct{ c *Client }
 func (c *Client) Videos() *Videos { return &Videos{c: c} }
 
 // Start submits a generation request and returns its id for Get or Wait.
-func (vs *Videos) Start(ctx context.Context, model, prompt string, opts ...VideoOption) (string, error) {
+func (vs *Videos) Start(ctx context.Context, model, prompt string, opts ...VideoOption) (_ string, err error) {
 	r := &videoRequest{pb: &v1.GenerateVideoRequest{Prompt: prompt, Model: model}}
 	for _, o := range opts {
 		o(r)
@@ -170,6 +170,8 @@ func (vs *Videos) Start(ctx context.Context, model, prompt string, opts ...Video
 	if r.err != nil {
 		return "", r.err
 	}
+	ctx, end := vs.c.startSpan(ctx, "video.start "+model, vs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := vs.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewVideoClient(vs.c.conn).GenerateVideo(ctx, r.pb)
@@ -180,11 +182,13 @@ func (vs *Videos) Start(ctx context.Context, model, prompt string, opts ...Video
 }
 
 // StartExtend submits a request to extend an existing video.
-func (vs *Videos) StartExtend(ctx context.Context, model, prompt string, video *VideoSource, duration int32) (string, error) {
+func (vs *Videos) StartExtend(ctx context.Context, model, prompt string, video *VideoSource, duration int32) (_ string, err error) {
 	req := &v1.ExtendVideoRequest{Prompt: prompt, Model: model, Video: video}
 	if duration > 0 {
 		req.Duration = proto.Int32(duration)
 	}
+	ctx, end := vs.c.startSpan(ctx, "video.extend_start "+model, vs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := vs.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewVideoClient(vs.c.conn).ExtendVideo(ctx, req)
@@ -204,7 +208,9 @@ type VideoStatus struct {
 }
 
 // Get polls a request once.
-func (vs *Videos) Get(ctx context.Context, requestID string) (*VideoStatus, error) {
+func (vs *Videos) Get(ctx context.Context, requestID string) (_ *VideoStatus, err error) {
+	ctx, end := vs.c.startSpan(ctx, "video.get", vs.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := vs.c.CallContext(ctx)
 	defer cancel()
 	r, err := v1.NewVideoClient(vs.c.conn).GetDeferredVideo(ctx, &v1.GetDeferredVideoRequest{RequestId: requestID})

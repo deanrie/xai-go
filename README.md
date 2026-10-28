@@ -88,6 +88,8 @@ key, err := client.Auth().GetAPIKeyInfo(ctx)
 
 Long-running operations (`Defer`, `Videos().Wait`, `Batches().Wait`) take `xai.PollOptions`; the zero value means a 1 s interval and a 10 min timeout, and `errors.Is(err, xai.ErrPollTimeout)` reports the timeout.
 
+Tracing: pass `xai.WithTracerProvider(tp)` (or install a global OpenTelemetry provider) and every call records a client span named as in the Python SDK (`chat.sample grok-4.6`, `file.upload`, `list_language_models`, ...) with `gen_ai.*` request and usage attributes; `xai.WithoutSensitiveAttributes()` keeps request parameters and user ids off the spans. Without a provider the spans are no-ops.
+
 Options: `xai.WithAPIKey`, `xai.WithAPIHost`, `xai.WithTimeout`, `xai.WithMetadata`, `xai.WithInsecure` (local test servers), `xai.WithDialOptions`.
 
 Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.ErrNotFound)` and the other sentinels work across the whole SDK. Arguments outside the accepted values fail before the request is sent with `*xai.ValidationError`, never with a silent fallback.
@@ -116,6 +118,7 @@ XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
 | Batch (chat, image and video requests; create, add, wait, results, cancel) | done |
 | Collections (create, update, list, documents, upload and wait, update document, batch get, delete) | experimental: generated from recovered protos until [xai-proto#83](https://github.com/xai-org/xai-proto/issues/83) is resolved; the Go API may change when the upstream file lands |
 | Documents (search with semantic, keyword, hybrid retrieval) | done |
+| Telemetry (OpenTelemetry spans, Python SDK names and attributes) | done |
 | Sample (legacy) | not planned |
 
 Conformance is checked against the Python SDK's fake gRPC server (`tests/server.py` in xai-sdk-python), so behaviour that the two SDKs share is tested the same way.

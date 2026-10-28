@@ -18,7 +18,9 @@ type Auth struct{ c *Client }
 func (c *Client) Auth() *Auth { return &Auth{c: c} }
 
 // GetAPIKeyInfo returns the redacted key, its name, ACLs and status.
-func (a *Auth) GetAPIKeyInfo(ctx context.Context) (*APIKey, error) {
+func (a *Auth) GetAPIKeyInfo(ctx context.Context) (_ *APIKey, err error) {
+	ctx, end := a.c.startSpan(ctx, "get_api_key_info", a.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := a.c.CallContext(ctx)
 	defer cancel()
 	key, err := v1.NewAuthClient(a.c.conn).GetApiKeyInfo(ctx, &emptypb.Empty{})

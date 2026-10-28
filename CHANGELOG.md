@@ -17,6 +17,7 @@ First public pre-release of the Go client.
 - Collections over the management API (experimental: generated from protos recovered out of the Python gencode, see xai-org/xai-proto#83).
 - Errors: `*Error` with the gRPC code, `errors.Is` sentinels, `Status()`, `Retryable()`; `*ValidationError` for out-of-range literals; `ErrPollTimeout`, `ErrDeferredExpired`, `*VideoError`, `*DocumentIndexingError`, `*JSONError`.
 - Conformance suite against `xai-sdk-python/tests/server.py`: API, management, two flaky servers for the retry case, one slow server for the timeout cases.
+- OpenTelemetry client spans on every call (`WithTracerProvider`, `WithoutSensitiveAttributes`) with the Python SDK's span names and `gen_ai.*` attributes; only the OpenTelemetry API is a dependency.
 - `docs/python-mapping.md` with every Python SDK method and its Go counterpart; runnable programs under `examples/`.
 
 ### Changed

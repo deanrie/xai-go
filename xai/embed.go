@@ -47,10 +47,12 @@ func (e *Embedder) EmbedBase64(ctx context.Context, model string, inputs ...*Emb
 	return e.embed(ctx, model, v1.EmbedEncodingFormat_FORMAT_BASE64, inputs)
 }
 
-func (e *Embedder) embed(ctx context.Context, model string, format v1.EmbedEncodingFormat, inputs []*EmbedInput) (*EmbedResponse, error) {
+func (e *Embedder) embed(ctx context.Context, model string, format v1.EmbedEncodingFormat, inputs []*EmbedInput) (_ *EmbedResponse, err error) {
 	if len(inputs) == 0 {
 		return nil, &ValidationError{Param: "inputs", Value: 0, Accepted: []string{"1 or more inputs"}}
 	}
+	ctx, end := e.c.startSpan(ctx, "embed "+model, e.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := e.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewEmbedderClient(e.c.conn).Embed(ctx, &v1.EmbedRequest{

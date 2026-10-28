@@ -3,6 +3,7 @@ package xai
 import (
 	"context"
 	"errors"
+	"go.opentelemetry.io/otel/trace"
 	"io"
 	"iter"
 	"strings"
@@ -120,12 +121,16 @@ func (ch *Chat) Sample(ctx context.Context) (*Response, error) {
 	if ch.err != nil {
 		return nil, ch.err
 	}
+	ctx, end := ch.c.startSpan(ctx, "chat.sample "+ch.req.GetModel(), ch.chatRequestAttrs("sample")...)
 	ctx, cancel := ch.c.CallContext(ctx)
 	defer cancel()
 	pb, err := v1.NewChatClient(ch.c.conn).GetCompletion(ctx, ch.request(1))
 	if err != nil {
+		end(wrapErr(err))
 		return nil, wrapErr(err)
 	}
+	trace.SpanFromContext(ctx).SetAttributes(chatResponseAttrs(pb)...)
+	end(nil)
 	index := autoDetectMultiOutput(ch.initialIndex(), outputIndexes(pb.GetOutputs()))
 	return newResponse(pb, index), nil
 }
@@ -139,12 +144,16 @@ func (ch *Chat) SampleBatch(ctx context.Context, n int) ([]*Response, error) {
 	if n < 1 {
 		return nil, &ValidationError{Param: "n", Value: n, Accepted: []string{"1 or more"}}
 	}
+	ctx, end := ch.c.startSpan(ctx, "chat.sample_batch "+ch.req.GetModel(), ch.chatRequestAttrs("sample_batch")...)
 	ctx, cancel := ch.c.CallContext(ctx)
 	defer cancel()
 	pb, err := v1.NewChatClient(ch.c.conn).GetCompletion(ctx, ch.request(int32(n)))
 	if err != nil {
+		end(wrapErr(err))
 		return nil, wrapErr(err)
 	}
+	trace.SpanFromContext(ctx).SetAttributes(chatResponseAttrs(pb)...)
+	end(nil)
 	return newResponseBatch(pb, n), nil
 }
 
@@ -156,15 +165,19 @@ func (ch *Chat) Stream(ctx context.Context) *ChatStream {
 	if ch.err != nil {
 		return &ChatStream{err: ch.err, cancel: func() {}}
 	}
+	ctx, end := ch.c.startSpan(ctx, "chat.stream "+ch.req.GetModel(), ch.chatRequestAttrs("stream")...)
 	ctx, cancel := ch.c.CallContext(ctx)
 	stream, err := v1.NewChatClient(ch.c.conn).GetCompletionChunk(ctx, ch.request(1))
 	if err != nil {
 		cancel()
+		end(wrapErr(err))
 		return &ChatStream{err: wrapErr(err), cancel: func() {}}
 	}
 	return &ChatStream{
 		stream:   stream,
 		cancel:   cancel,
+		span:     trace.SpanFromContext(ctx),
+		end:      end,
 		response: newResponse(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{}}}, ch.initialIndex()),
 	}
 }
@@ -173,9 +186,23 @@ func (ch *Chat) Stream(ctx context.Context) *ChatStream {
 type ChatStream struct {
 	stream   v1.Chat_GetCompletionChunkClient
 	cancel   context.CancelFunc
+	span     trace.Span
+	end      func(error)
 	response *Response
 	err      error
 	done     bool
+}
+
+// finish closes the span once, recording the response and the outcome.
+func (s *ChatStream) finish() {
+	if s.end == nil {
+		return
+	}
+	if s.span != nil {
+		s.span.SetAttributes(chatResponseAttrs(s.response.pb)...)
+	}
+	s.end(s.err)
+	s.end = nil
 }
 
 // All iterates over the chunks. Use it with range.
@@ -185,6 +212,7 @@ func (s *ChatStream) All() iter.Seq2[*Response, *Chunk] {
 			return
 		}
 		defer s.cancel()
+		defer s.finish()
 		for {
 			pb, err := s.stream.Recv()
 			if errors.Is(err, io.EOF) {
@@ -478,10 +506,12 @@ func (ch *Chat) StreamBatch(ctx context.Context, n int) *ChatBatchStream {
 	if n < 1 {
 		return &ChatBatchStream{err: &ValidationError{Param: "n", Value: n, Accepted: []string{"1 or more"}}, cancel: func() {}}
 	}
+	ctx, end := ch.c.startSpan(ctx, "chat.stream_batch "+ch.req.GetModel(), ch.chatRequestAttrs("stream_batch")...)
 	ctx, cancel := ch.c.CallContext(ctx)
 	stream, err := v1.NewChatClient(ch.c.conn).GetCompletionChunk(ctx, ch.request(int32(n)))
 	if err != nil {
 		cancel()
+		end(wrapErr(err))
 		return &ChatBatchStream{err: wrapErr(err), cancel: func() {}}
 	}
 	outs := make([]*v1.CompletionOutput, n)
@@ -491,6 +521,8 @@ func (ch *Chat) StreamBatch(ctx context.Context, n int) *ChatBatchStream {
 	return &ChatBatchStream{
 		stream:    stream,
 		cancel:    cancel,
+		span:      trace.SpanFromContext(ctx),
+		end:       end,
 		responses: newResponseBatch(&v1.GetChatCompletionResponse{Outputs: outs}, n),
 	}
 }
@@ -499,9 +531,22 @@ func (ch *Chat) StreamBatch(ctx context.Context, n int) *ChatBatchStream {
 type ChatBatchStream struct {
 	stream    v1.Chat_GetCompletionChunkClient
 	cancel    context.CancelFunc
+	span      trace.Span
+	end       func(error)
 	responses []*Response
 	err       error
 	done      bool
+}
+
+func (s *ChatBatchStream) finish() {
+	if s.end == nil {
+		return
+	}
+	if s.span != nil && len(s.responses) > 0 {
+		s.span.SetAttributes(chatResponseAttrs(s.responses[0].pb)...)
+	}
+	s.end(s.err)
+	s.end = nil
 }
 
 // All iterates over the stream; use it with range.
@@ -511,6 +556,7 @@ func (s *ChatBatchStream) All() iter.Seq2[[]*Response, []*Chunk] {
 			return
 		}
 		defer s.cancel()
+		defer s.finish()
 		for {
 			pb, err := s.stream.Recv()
 			if errors.Is(err, io.EOF) {

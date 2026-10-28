@@ -73,7 +73,9 @@ func (c *Client) Batches() *Batches { return &Batches{c: c} }
 
 // Create creates an empty batch, or one seeded from an uploaded JSONL file
 // when inputFileID is set.
-func (b *Batches) Create(ctx context.Context, name, inputFileID string) (*Batch, error) {
+func (b *Batches) Create(ctx context.Context, name, inputFileID string) (_ *Batch, err error) {
+	ctx, end := b.c.startSpan(ctx, "batch.create", b.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := b.c.CallContext(ctx)
 	defer cancel()
 	batch, err := v1.NewBatchMgmtClient(b.c.conn).CreateBatch(ctx, &v1.CreateBatchRequest{Name: name, InputFileId: inputFileID})
@@ -84,18 +86,22 @@ func (b *Batches) Create(ctx context.Context, name, inputFileID string) (*Batch,
 }
 
 // Add appends requests to a batch.
-func (b *Batches) Add(ctx context.Context, batchID string, reqs ...*BatchRequest) error {
+func (b *Batches) Add(ctx context.Context, batchID string, reqs ...*BatchRequest) (err error) {
 	if len(reqs) == 0 {
 		return &ValidationError{Param: "requests", Value: 0, Accepted: []string{"1 or more requests"}}
 	}
+	ctx, end := b.c.startSpan(ctx, "batch.add", b.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := b.c.CallContext(ctx)
 	defer cancel()
-	_, err := v1.NewBatchMgmtClient(b.c.conn).AddBatchRequests(ctx, &v1.AddBatchRequestsRequest{BatchId: batchID, BatchRequests: reqs})
+	_, err = v1.NewBatchMgmtClient(b.c.conn).AddBatchRequests(ctx, &v1.AddBatchRequestsRequest{BatchId: batchID, BatchRequests: reqs})
 	return wrapErr(err)
 }
 
 // Get returns a batch with its current counts.
-func (b *Batches) Get(ctx context.Context, batchID string) (*Batch, error) {
+func (b *Batches) Get(ctx context.Context, batchID string) (_ *Batch, err error) {
+	ctx, end := b.c.startSpan(ctx, "batch.get", b.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := b.c.CallContext(ctx)
 	defer cancel()
 	batch, err := v1.NewBatchMgmtClient(b.c.conn).GetBatch(ctx, &v1.GetBatchRequest{BatchId: batchID})
@@ -106,7 +112,9 @@ func (b *Batches) Get(ctx context.Context, batchID string) (*Batch, error) {
 }
 
 // Cancel cancels pending requests in a batch.
-func (b *Batches) Cancel(ctx context.Context, batchID string) (*Batch, error) {
+func (b *Batches) Cancel(ctx context.Context, batchID string) (_ *Batch, err error) {
+	ctx, end := b.c.startSpan(ctx, "batch.cancel", b.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := b.c.CallContext(ctx)
 	defer cancel()
 	batch, err := v1.NewBatchMgmtClient(b.c.conn).CancelBatch(ctx, &v1.CancelBatchRequest{BatchId: batchID})
@@ -230,7 +238,9 @@ func (b *Batches) Results(ctx context.Context, batchID string) iter.Seq2[*BatchR
 }
 
 // Result returns one request and its result.
-func (b *Batches) Result(ctx context.Context, batchID, requestID string) (*BatchRequest, *BatchResult, error) {
+func (b *Batches) Result(ctx context.Context, batchID, requestID string) (_ *BatchRequest, _ *BatchResult, err error) {
+	ctx, end := b.c.startSpan(ctx, "batch.get_request_result", b.c.serverAttrs()...)
+	defer func() { end(err) }()
 	ctx, cancel := b.c.CallContext(ctx)
 	defer cancel()
 	resp, err := v1.NewBatchMgmtClient(b.c.conn).GetBatchRequestResult(ctx, &v1.GetBatchRequestResultRequest{BatchId: batchID, BatchRequestId: requestID})

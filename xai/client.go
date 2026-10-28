@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -45,14 +46,16 @@ var ErrMissingManagementAPIKey = errors.New("xai: no management API key: pass Wi
 type Option func(*config)
 
 type config struct {
-	apiKey            string
-	managementAPIKey  string
-	apiHost           string
-	managementAPIHost string
-	timeout           time.Duration
-	metadata          metadata.MD
-	insecure          bool
-	dialOptions       []grpc.DialOption
+	apiKey                string
+	managementAPIKey      string
+	apiHost               string
+	managementAPIHost     string
+	tracerProvider        trace.TracerProvider
+	noSensitiveAttributes bool
+	timeout               time.Duration
+	metadata              metadata.MD
+	insecure              bool
+	dialOptions           []grpc.DialOption
 }
 
 // WithAPIKey sets the API key. The default is XAI_API_KEY.
@@ -104,6 +107,10 @@ type Client struct {
 	conn    *grpc.ClientConn
 	timeout time.Duration
 	md      metadata.MD
+	apiHost string
+
+	tracerProvider        trace.TracerProvider
+	noSensitiveAttributes bool
 
 	// The management API lives on a second host with its own key. It is
 	// dialled on first use so clients that never touch it pay nothing.
@@ -168,7 +175,7 @@ func New(opts ...Option) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("xai: dial %s: %w", target, err)
 	}
-	c := &Client{conn: conn, timeout: cfg.timeout, md: md}
+	c := &Client{conn: conn, timeout: cfg.timeout, md: md, apiHost: target, tracerProvider: cfg.tracerProvider, noSensitiveAttributes: cfg.noSensitiveAttributes}
 	c.mgmt.target = withDefaultPort(cfg.managementAPIHost)
 	c.mgmt.dialOpts = dialOpts
 	if cfg.managementAPIKey != "" {

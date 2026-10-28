@@ -22,6 +22,9 @@ import (
 	"testing"
 	"time"
 
+	otelcodes "go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"google.golang.org/grpc"
 
 	"github.com/deanrie/xai-go/xai"
@@ -865,5 +868,55 @@ func TestCallerDeadlineOnStream(t *testing.T) {
 	}
 	if !errors.Is(stream.Err(), xai.ErrDeadlineExceeded) {
 		t.Fatalf("want ErrDeadlineExceeded, got %v", stream.Err())
+	}
+}
+
+// Spans are emitted end to end: one per call, named like the Python SDK,
+// with the response usage from the fake server attached.
+func TestTelemetrySpans(t *testing.T) {
+	rec := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec))
+	defer func() { _ = tp.Shutdown(context.Background()) }()
+	c := newClient(t, xai.WithTracerProvider(tp))
+
+	if _, err := c.Chat("grok-4.6").Append(xai.User(xai.Text("hi"))).Sample(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Tokenize().TokenizeText(t.Context(), "hi", "grok-4.6"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Models().GetLanguageModel(t.Context(), "nope"); err == nil {
+		t.Fatal("expected not found")
+	}
+	stream := c.Chat("grok-4.6").Append(xai.User(xai.Text("hi"))).Stream(t.Context())
+	for range stream.All() {
+	}
+
+	names := map[string]bool{}
+	var sample, failed sdktrace.ReadOnlySpan
+	for _, s := range rec.Ended() {
+		names[s.Name()] = true
+		switch s.Name() {
+		case "chat.sample grok-4.6":
+			sample = s
+		case "get_language_model nope":
+			failed = s
+		}
+	}
+	for _, want := range []string{"chat.sample grok-4.6", "tokenize_text grok-4.6", "get_language_model nope", "chat.stream grok-4.6"} {
+		if !names[want] {
+			t.Errorf("missing span %q in %v", want, names)
+		}
+	}
+	if sample == nil || failed == nil {
+		t.Fatal("spans not found")
+	}
+	for _, kv := range sample.Attributes() {
+		if kv.Key == "gen_ai.usage.total_tokens" && kv.Value.AsInt64() != 15 {
+			t.Errorf("total_tokens = %d", kv.Value.AsInt64())
+		}
+	}
+	if failed.Status().Code != otelcodes.Error {
+		t.Errorf("failed call span status = %v", failed.Status())
 	}
 }
