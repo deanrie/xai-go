@@ -14,6 +14,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -41,6 +42,10 @@ const (
 // ErrMissingAPIKey is returned by New when no API key is given and
 // XAI_API_KEY is not set.
 var ErrMissingAPIKey = errors.New("xai: no API key: pass WithAPIKey or set " + envAPIKey)
+
+// ErrMissingManagementAPIKey is returned by the management endpoints when no
+// management key is given and XAI_MANAGEMENT_KEY is unset.
+var ErrMissingManagementAPIKey = errors.New("xai: no management API key: pass WithManagementAPIKey or set " + envManagementAPIKey)
 
 // Option configures a Client.
 type Option func(*config)
@@ -105,6 +110,17 @@ type Client struct {
 	conn    *grpc.ClientConn
 	timeout time.Duration
 	md      metadata.MD
+
+	// The management API lives on a second host with its own key. It is
+	// dialled on first use so clients that never touch it pay nothing.
+	mgmt struct {
+		once     sync.Once
+		conn     *grpc.ClientConn
+		err      error
+		target   string
+		md       metadata.MD
+		dialOpts []grpc.DialOption
+	}
 }
 
 // New creates a Client. It does not contact the API; the first call dials.
@@ -131,15 +147,8 @@ func New(opts ...Option) (*Client, error) {
 		cfg.timeout = DefaultTimeout
 	}
 
-	md := cfg.metadata.Copy()
-	md.Set("authorization", "Bearer "+cfg.apiKey)
-	md.Append("xai-sdk-version", "go/"+Version)
-	md.Append("xai-sdk-language", "go/"+strings.TrimPrefix(runtime.Version(), "go"))
-
-	target := cfg.apiHost
-	if !strings.Contains(target, ":") {
-		target += ":443"
-	}
+	md := sdkMetadata(cfg.metadata, cfg.apiKey)
+	target := withDefaultPort(cfg.apiHost)
 
 	dialOpts := []grpc.DialOption{
 		grpc.WithUserAgent(userAgent),
@@ -165,11 +174,66 @@ func New(opts ...Option) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("xai: dial %s: %w", target, err)
 	}
-	return &Client{conn: conn, timeout: cfg.timeout, md: md}, nil
+	c := &Client{conn: conn, timeout: cfg.timeout, md: md}
+	c.mgmt.target = withDefaultPort(cfg.managementAPIHost)
+	c.mgmt.dialOpts = dialOpts
+	if cfg.managementAPIKey != "" {
+		c.mgmt.md = sdkMetadata(cfg.metadata, cfg.managementAPIKey)
+	}
+	return c, nil
 }
 
-// Close releases the connection. The Client must not be used afterwards.
-func (c *Client) Close() error { return c.conn.Close() }
+// sdkMetadata is the per-call metadata: caller entries, the bearer token
+// and the SDK identification the API logs.
+func sdkMetadata(base metadata.MD, apiKey string) metadata.MD {
+	md := base.Copy()
+	md.Set("authorization", "Bearer "+apiKey)
+	md.Append("xai-sdk-version", "go/"+Version)
+	md.Append("xai-sdk-language", "go/"+strings.TrimPrefix(runtime.Version(), "go"))
+	return md
+}
+
+func withDefaultPort(host string) string {
+	if strings.Contains(host, ":") {
+		return host
+	}
+	return host + ":443"
+}
+
+// managementConn dials the management API on first use.
+func (c *Client) managementConn() (*grpc.ClientConn, error) {
+	if c.mgmt.md == nil {
+		return nil, ErrMissingManagementAPIKey
+	}
+	c.mgmt.once.Do(func() {
+		c.mgmt.conn, c.mgmt.err = grpc.NewClient(c.mgmt.target, c.mgmt.dialOpts...)
+		if c.mgmt.err != nil {
+			c.mgmt.err = fmt.Errorf("xai: dial %s: %w", c.mgmt.target, c.mgmt.err)
+		}
+	})
+	return c.mgmt.conn, c.mgmt.err
+}
+
+// ManagementCallContext is CallContext for the management API: it carries
+// the management key instead of the API key.
+func (c *Client) ManagementCallContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	ctx = metadata.NewOutgoingContext(ctx, joinMetadata(ctx, c.mgmt.md))
+	if _, ok := ctx.Deadline(); ok {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, c.timeout)
+}
+
+// Close releases the connections. The Client must not be used afterwards.
+func (c *Client) Close() error {
+	err := c.conn.Close()
+	if c.mgmt.conn != nil {
+		if merr := c.mgmt.conn.Close(); err == nil {
+			err = merr
+		}
+	}
+	return err
+}
 
 // Conn exposes the underlying connection for callers who want to use the
 // generated stubs directly. The connection carries the transport settings

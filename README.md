@@ -105,7 +105,8 @@ Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.Err
 | Image (generate, batch, url or base64, edit inputs) | done |
 | Video (start, poll, wait, extend) | done |
 | Batch (create, add, wait, results, cancel) | done |
-| Collections, Documents, Sample (legacy) | planned |
+| Collections | blocked: `collections.proto` is not published in xai-proto (only compiled into xai-sdk-python) |
+| Documents (search), Sample (legacy) | planned |
 
 Conformance is checked against the Python SDK's fake gRPC server (`tests/server.py` in xai-sdk-python), so behaviour that the two SDKs share is tested the same way.
 

@@ -174,3 +174,41 @@ func TestPollStopsOnDoneTimeoutAndContext(t *testing.T) {
 		t.Fatalf("step error: %v", err)
 	}
 }
+
+func TestManagementConnNeedsAKey(t *testing.T) {
+	t.Setenv("XAI_MANAGEMENT_KEY", "")
+	c, err := New(WithAPIKey("k"), WithInsecure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if _, err := c.managementConn(); !errors.Is(err, ErrMissingManagementAPIKey) {
+		t.Fatalf("without a management key: %v", err)
+	}
+
+	m, err := New(WithAPIKey("k"), WithManagementAPIKey("mk"), WithManagementAPIHost("127.0.0.1:1"), WithInsecure())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	conn, err := m.managementConn()
+	if err != nil || conn == nil {
+		t.Fatalf("lazy dial: %v", err)
+	}
+	again, _ := m.managementConn()
+	if again != conn {
+		t.Error("management connection dialled twice")
+	}
+	ctx, cancel := m.ManagementCallContext(t.Context())
+	defer cancel()
+	md, _ := metadata.FromOutgoingContext(ctx)
+	if got := md.Get("authorization"); len(got) != 1 || got[0] != "Bearer mk" {
+		t.Errorf("management authorization = %v", got)
+	}
+	actx, acancel := m.CallContext(t.Context())
+	defer acancel()
+	amd, _ := metadata.FromOutgoingContext(actx)
+	if got := amd.Get("authorization"); len(got) != 1 || got[0] != "Bearer k" {
+		t.Errorf("api authorization = %v", got)
+	}
+}
