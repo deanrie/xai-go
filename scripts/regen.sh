@@ -13,7 +13,7 @@ MODULE="github.com/deanrie/xai-go/internal/gen"
 # that renders them back from the descriptors compiled into xai-sdk-python;
 # the structure is checked identical to the gencode there.
 RECOVERED_REPO="${RECOVERED_REPO:-https://github.com/deanrie/xai-proto.git}"
-RECOVERED_COMMIT="${RECOVERED_COMMIT:-061ae1c}"
+RECOVERED_COMMIT="${RECOVERED_COMMIT:-d76b522}"
 RECOVERED_FILES="collections.proto shared.proto types.proto"
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
