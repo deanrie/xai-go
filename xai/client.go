@@ -1,9 +1,3 @@
-// Package xai is a Go client for the xAI gRPC API.
-//
-// The client is a thin layer over the stubs generated from xai-proto. Every
-// call takes a context.Context; options are functional. The defaults match
-// the Python SDK: api.x.ai:443 over TLS, the API key from XAI_API_KEY, a
-// 27-minute per-call timeout, 20 MiB message limits and keepalive pings.
 package xai
 
 import (
