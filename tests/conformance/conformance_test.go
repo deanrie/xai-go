@@ -783,3 +783,42 @@ func TestChatSampleJSON(t *testing.T) {
 		t.Fatalf("want JSONError with the response, got %v %v", resp, err)
 	}
 }
+
+// tests/sync/chat_test.py::test_sample_with_server_side_tools: three
+// outputs (assistant tool call, tool result, final assistant text); the
+// Response reads the final text and gathers the tool calls.
+func TestChatSampleServerSideTools(t *testing.T) {
+	c := newClient(t)
+	resp, err := c.Chat("grok-4", xai.WithTools(xai.WebSearchTool())).Append(xai.User(xai.Text("weather?"))).Sample(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Content() != "I am searching." {
+		t.Errorf("content = %q", resp.Content())
+	}
+	if calls := resp.ToolCalls(); len(calls) == 0 || calls[0].GetFunction().GetName() != "web_search" {
+		t.Errorf("tool calls = %v", calls)
+	}
+	if n := len(resp.Proto().GetOutputs()); n != 3 {
+		t.Errorf("outputs = %d", n)
+	}
+}
+
+// tests/sync/chat_test.py::test_encrypted_content: reasoning and encrypted
+// content come back when asked for, and AppendResponse carries them on.
+func TestChatEncryptedContent(t *testing.T) {
+	c := newClient(t)
+	chat := c.Chat("grok-4", xai.WithEncryptedContent(true)).Append(xai.User(xai.Text("hi")))
+	resp, err := chat.Sample(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.ReasoningContent() != "test reasoning content" || resp.EncryptedContent() != "test encrypted content" {
+		t.Errorf("reasoning=%q encrypted=%q", resp.ReasoningContent(), resp.EncryptedContent())
+	}
+	chat.AppendResponse(resp)
+	msgs := chat.Messages()
+	if last := msgs[len(msgs)-1]; last.GetEncryptedContent() != "test encrypted content" || last.GetReasoningContent() != "test reasoning content" {
+		t.Errorf("appended message = %v", last)
+	}
+}
