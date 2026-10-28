@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	otelcodes "go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -43,7 +44,7 @@ func TestChatStreamSpanCarriesRequestAndResponseAttributes(t *testing.T) {
 	s := &ChatStream{
 		stream:   &fakeChunkStream{chunks: []*v1.GetChatCompletionChunk{chunk("s1", "a"), chunk("s1", "b")}},
 		cancel:   func() {},
-		span:     spanFrom(ctx),
+		span:     trace.SpanFromContext(ctx),
 		end:      end,
 		response: newResponse(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{{}}}, 0),
 	}
