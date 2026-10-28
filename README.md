@@ -42,6 +42,27 @@ func main() {
 }
 ```
 
+Chat:
+
+```go
+chat := client.Chat("grok-4", xai.WithMaxTokens(200), xai.WithReasoningEffort(xai.ReasoningEffortLow))
+chat.Append(xai.System("Answer in one sentence.")).Append(xai.User(xai.Text("Why is the sky blue?")))
+
+resp, err := chat.Sample(ctx)          // one response
+fmt.Println(resp.Content(), resp.Usage())
+
+stream := chat.Stream(ctx)             // incremental
+for resp, chunk := range stream.All() {
+    fmt.Print(chunk.Content())
+    _ = resp // accumulated so far
+}
+if err := stream.Err(); err != nil { /* ... */ }
+
+chat.AppendResponse(resp)              // continue the conversation
+```
+
+With server-side tools (`web_search`, `x_search`, `code_execution`, …) the response covers every output: `Content()` is the final assistant answer and `ToolCalls()` gathers calls from all assistant outputs.
+
 Options: `xai.WithAPIKey`, `xai.WithAPIHost`, `xai.WithTimeout`, `xai.WithMetadata`, `xai.WithInsecure` (local test servers), `xai.WithDialOptions`.
 
 Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.ErrNotFound)` and the other sentinels work across the whole SDK. Arguments outside the accepted values fail before the request is sent with `*xai.ValidationError`, never with a silent fallback.
@@ -52,7 +73,8 @@ Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.Err
 | --- | --- |
 | Models | done |
 | Tokenize | done |
-| Chat (create, stream, tools, defer, batch) | in progress |
+| Chat (sample, stream, batch, function tools, multi-output) | done |
+| Chat (deferred, stored responses, server-side tool options) | planned |
 | Files, Collections, Documents | planned |
 | Batch, Embed, Auth | planned |
 | Image, Video, Sample | planned |
