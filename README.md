@@ -81,6 +81,14 @@ Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.Err
 
 Conformance is checked against the Python SDK's fake gRPC server (`tests/server.py` in xai-sdk-python), so behaviour that the two SDKs share is tested the same way.
 
+## Conformance tests
+
+`tests/conformance` runs the Go client against the gRPC test server that ships with the Python SDK (`xai-sdk-python/tests/server.py`), so both SDKs are checked against the same behaviour. The tests skip unless `XAI_SDK_PYTHON_DIR` points at a checkout and `uv` is installed:
+
+```sh
+XAI_SDK_PYTHON_DIR=~/src/xai-sdk-python go test ./tests/conformance/
+```
+
 ## Regenerating the stubs
 
 `scripts/regen.sh` clones xai-proto at the commit recorded in `internal/gen/XAI_PROTO_COMMIT`, runs `buf generate` with the Go plugins from xai-proto's `buf.gen.yaml`, and copies the result into `internal/gen`. CI checks that the committed stubs match.

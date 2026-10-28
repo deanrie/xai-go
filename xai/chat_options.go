@@ -177,3 +177,17 @@ func FunctionTool(name, description, parametersJSON string) *Tool {
 		Parameters:  parametersJSON,
 	}}}
 }
+
+// Server-side tools. The API runs these itself and the response then covers
+// every output; see Response.
+
+// WebSearchTool lets the model search the web.
+func WebSearchTool() *Tool { return &Tool{Tool: &v1.Tool_WebSearch{WebSearch: &v1.WebSearch{}}} }
+
+// XSearchTool lets the model search X.
+func XSearchTool() *Tool { return &Tool{Tool: &v1.Tool_XSearch{XSearch: &v1.XSearch{}}} }
+
+// CodeExecutionTool lets the model run code in a sandbox.
+func CodeExecutionTool() *Tool {
+	return &Tool{Tool: &v1.Tool_CodeExecution{CodeExecution: &v1.CodeExecution{}}}
+}

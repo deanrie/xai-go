@@ -38,3 +38,22 @@ jobs:
           setup_only: true
       - run: ./scripts/regen.sh
       - run: git diff --exit-code -- internal/gen
+
+  conformance:
+    name: conformance against xai-sdk-python/tests/server.py
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: xai-org/xai-sdk-python
+          path: .xai-sdk-python
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache: true
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --project .xai-sdk-python --all-extras
+      - run: go test -count=1 -v ./tests/conformance/
+        env:
+          XAI_SDK_PYTHON_DIR: ${{ github.workspace }}/.xai-sdk-python
