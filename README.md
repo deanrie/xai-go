@@ -80,7 +80,8 @@ Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.Err
 | Collections, Documents | planned |
 | Embed, Auth | done |
 | Batch | planned |
-| Image, Video, Sample | planned |
+| Image (generate, batch, url or base64, edit inputs) | done |
+| Video, Sample | planned |
 
 Conformance is checked against the Python SDK's fake gRPC server (`tests/server.py` in xai-sdk-python), so behaviour that the two SDKs share is tested the same way.
 

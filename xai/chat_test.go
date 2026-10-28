@@ -183,3 +183,22 @@ func TestFilesValidation(t *testing.T) {
 		t.Errorf("missing path: %v", err)
 	}
 }
+
+func TestImageAccessorsDistinguishFormatFromModeration(t *testing.T) {
+	url := &Image{pb: &v1.GeneratedImage{Image: &v1.GeneratedImage_Url{Url: "https://x/i.png"}}}
+	if _, err := url.Base64(); !errors.Is(err, ErrImageFormat) {
+		t.Errorf("base64 on a URL image: %v", err)
+	}
+	withheld := &Image{pb: &v1.GeneratedImage{}}
+	if _, err := withheld.URL(); !errors.Is(err, ErrImageModerated) {
+		t.Errorf("withheld image: %v", err)
+	}
+	emptyOK := &Image{pb: &v1.GeneratedImage{RespectModeration: true}}
+	if _, err := emptyOK.URL(); !errors.Is(err, ErrImageFormat) {
+		t.Errorf("respecting moderation but empty: %v", err)
+	}
+	b64 := &Image{pb: &v1.GeneratedImage{Image: &v1.GeneratedImage_Base64{Base64: "data:image/png;base64,aGk="}}}
+	if raw, err := b64.Bytes(); err != nil || string(raw) != "hi" {
+		t.Errorf("Bytes: %q %v", raw, err)
+	}
+}

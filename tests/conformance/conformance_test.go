@@ -368,3 +368,37 @@ func TestFilesUpload(t *testing.T) {
 		t.Errorf("UploadFile: %v %v", file, err)
 	}
 }
+
+// tests/sync/image_test.py: URL mode returns the server's URL, base64 mode
+// returns a data URL that decodes to the JPEG the server serves.
+func TestImagesGenerate(t *testing.T) {
+	c := newClient(t)
+	img, err := c.Images().Generate(t.Context(), "grok-imagine", "a cat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, err := img.URL(); err != nil || !strings.HasPrefix(u, "http://localhost:") {
+		t.Errorf("URL: %q %v", u, err)
+	}
+	if _, err := img.Base64(); !errors.Is(err, xai.ErrImageFormat) {
+		t.Errorf("Base64 in URL mode: %v", err)
+	}
+
+	batch, err := c.Images().GenerateBatch(t.Context(), "grok-imagine", "a cat", 3, xai.WithImageFormat(xai.ImageFormatBase64), xai.WithImageAspectRatio("16:9"))
+	if err != nil || len(batch) != 3 {
+		t.Fatalf("GenerateBatch: %d %v", len(batch), err)
+	}
+	raw, err := batch[0].Bytes()
+	if err != nil || len(raw) < 4 || raw[0] != 0xFF || raw[1] != 0xD8 {
+		t.Errorf("Bytes: len=%d err=%v (want a JPEG)", len(raw), err)
+	}
+	if _, err := batch[0].URL(); !errors.Is(err, xai.ErrImageFormat) {
+		t.Errorf("URL in base64 mode: %v", err)
+	}
+	if _, err := c.Images().GenerateBatch(t.Context(), "m", "p", 11); !errors.Is(err, xai.ErrInvalidArgument) {
+		t.Errorf("n=11: %v", err)
+	}
+	if _, err := c.Images().Generate(t.Context(), "m", "p", xai.WithImageAspectRatio("5:4")); !errors.Is(err, xai.ErrInvalidArgument) {
+		t.Errorf("bad aspect ratio: %v", err)
+	}
+}
