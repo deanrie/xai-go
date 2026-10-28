@@ -402,3 +402,36 @@ func TestImagesGenerate(t *testing.T) {
 		t.Errorf("bad aspect ratio: %v", err)
 	}
 }
+
+// tests/sync/video_test.py: two PENDING polls, then DONE with the server's
+// URL and the requested duration; extend goes through the same path.
+func TestVideosGenerate(t *testing.T) {
+	c := newClient(t)
+	pollOpts := xai.PollOptions{Interval: 10 * time.Millisecond}
+	var polls int
+	id, err := c.Videos().Start(t.Context(), "grok-imagine-video", "a cat", xai.WithVideoDuration(8), xai.WithVideoAspectRatio("16:9"))
+	if err != nil || id == "" {
+		t.Fatalf("Start: %q %v", id, err)
+	}
+	resp, err := c.Videos().Wait(t.Context(), id, pollOpts, func(int32) { polls++ })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.GetVideo().GetUrl() != "https://example.com/foo.mp4" || resp.GetVideo().GetDuration() != 8 {
+		t.Errorf("video = %v", resp.GetVideo())
+	}
+	if polls < 3 {
+		t.Errorf("polls = %d, want the two PENDING answers plus DONE", polls)
+	}
+
+	ext, err := c.Videos().Extend(t.Context(), "grok-imagine-video", "more", xai.VideoURL(resp.GetVideo().GetUrl()), 4, pollOpts)
+	if err != nil || ext.GetVideo().GetUrl() == "" {
+		t.Errorf("Extend: %v %v", ext, err)
+	}
+	if _, err := c.Videos().Get(t.Context(), "missing"); !errors.Is(err, xai.ErrNotFound) {
+		t.Errorf("Get unknown id: %v", err)
+	}
+	if _, err := c.Videos().Start(t.Context(), "m", "p", xai.WithVideoResolution("4k")); !errors.Is(err, xai.ErrInvalidArgument) {
+		t.Errorf("bad resolution: %v", err)
+	}
+}

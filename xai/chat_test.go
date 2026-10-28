@@ -202,3 +202,14 @@ func TestImageAccessorsDistinguishFormatFromModeration(t *testing.T) {
 		t.Errorf("Bytes: %q %v", raw, err)
 	}
 }
+
+func TestVideoErrorMessage(t *testing.T) {
+	err := error(&VideoError{Code: "CONTENT_POLICY", Message: "rejected"})
+	if err.Error() != "xai: video generation failed: CONTENT_POLICY: rejected" {
+		t.Error(err.Error())
+	}
+	var ve *VideoError
+	if !errors.As(err, &ve) || ve.Code != "CONTENT_POLICY" {
+		t.Error("errors.As")
+	}
+}
