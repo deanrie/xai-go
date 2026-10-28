@@ -63,6 +63,30 @@ chat.AppendResponse(resp)              // continue the conversation
 
 With server-side tools (`web_search`, `x_search`, `code_execution`, …) the response covers every output: `Content()` is the final assistant answer and `ToolCalls()` gathers calls from all assistant outputs.
 
+Other services follow the same shape:
+
+```go
+file, err := client.Files().UploadFile(ctx, "report.pdf")
+data, err := client.Files().Content(ctx, file.GetId())
+
+img, err := client.Images().Generate(ctx, "grok-imagine", "a lighthouse at dusk", xai.WithImageAspectRatio("16:9"))
+url, err := img.URL()
+
+video, err := client.Videos().Generate(ctx, "grok-imagine-video", "waves at night", xai.PollOptions{}, xai.WithVideoDuration(8))
+
+batch, err := client.Batches().Create(ctx, "nightly", "")
+req, err := xai.BatchChatRequest("q1", chat)
+err = client.Batches().Add(ctx, batch.GetBatchId(), req)
+batch, err = client.Batches().Wait(ctx, batch.GetBatchId(), xai.PollOptions{Timeout: time.Hour})
+for result, err := range client.Batches().Results(ctx, batch.GetBatchId()) { /* result.Chat, result.Err */ }
+
+vectors, err := client.Embed().Embed(ctx, "grok-embed", xai.EmbedText("hello"))
+tokens, err := client.Tokenize().TokenizeText(ctx, "hello", "grok-4")
+key, err := client.Auth().GetAPIKeyInfo(ctx)
+```
+
+Long-running operations (`Defer`, `Videos().Wait`, `Batches().Wait`) take `xai.PollOptions`; the zero value means a 1 s interval and a 10 min timeout, and `errors.Is(err, xai.ErrPollTimeout)` reports the timeout.
+
 Options: `xai.WithAPIKey`, `xai.WithAPIHost`, `xai.WithTimeout`, `xai.WithMetadata`, `xai.WithInsecure` (local test servers), `xai.WithDialOptions`.
 
 Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.ErrNotFound)` and the other sentinels work across the whole SDK. Arguments outside the accepted values fail before the request is sent with `*xai.ValidationError`, never with a silent fallback.
