@@ -920,3 +920,31 @@ func TestTelemetrySpans(t *testing.T) {
 		t.Errorf("failed call span status = %v", failed.Status())
 	}
 }
+
+// tests/sync/chat_test.py::test_image_generation_tool: the server answers an
+// image_generation tool with a completed call and its envelope in one
+// ROLE_TOOL chunk, then the assistant text.
+func TestChatImageGenerationTool(t *testing.T) {
+	c := newClient(t)
+	tool, err := xai.ImageGenerationTool(xai.ImageGenerationAuto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := c.Chat("grok-4.6", xai.WithTools(tool)).Append(xai.User(xai.Text("draw a cat"))).Stream(t.Context())
+	for range stream.All() {
+	}
+	if err := stream.Err(); err != nil {
+		t.Fatal(err)
+	}
+	resp := stream.Response()
+	outs, err := resp.ImageOutputs()
+	if err != nil || len(outs) != 1 {
+		t.Fatalf("image outputs: %d %v", len(outs), err)
+	}
+	if len(outs[0].Image) < 4 || outs[0].Image[0] != 0xFF || outs[0].Image[1] != 0xD8 || outs[0].MIMEType != "image/jpeg" || outs[0].ImageUUID == "" {
+		t.Errorf("image: mime=%s uuid=%q len=%d", outs[0].MIMEType, outs[0].ImageUUID, len(outs[0].Image))
+	}
+	if resp.Content() != "Here is your image." {
+		t.Errorf("content = %q", resp.Content())
+	}
+}

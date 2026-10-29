@@ -338,3 +338,77 @@ func MCPTool(label, url, description string, opts ...MCPOption) *Tool {
 // Developer returns a developer message. Models up to grok-4.1 treat it as
 // a system message.
 func Developer(text string) *Message { return textMessage(v1.MessageRole_ROLE_DEVELOPER, text) }
+
+// File content parts. A chat message can carry a file three ways; the
+// server reads exactly one of them.
+
+// FileRef returns a content part referencing a file uploaded through Files.
+func FileRef(fileID string) *Content {
+	return &Content{Content: &v1.Content_File{File: &v1.FileContent{FileId: fileID}}}
+}
+
+// FileBytes returns a content part with the file inlined in the request.
+// name and mimeType help the server pick a parser; mimeType may be empty.
+func FileBytes(name string, data []byte, mimeType string) (*Content, error) {
+	if len(data) == 0 {
+		return nil, &ValidationError{Param: "data", Value: 0, Accepted: []string{"non-empty file bytes"}}
+	}
+	return &Content{Content: &v1.Content_File{File: &v1.FileContent{Data: data, Filename: name, MimeType: mimeType}}}, nil
+}
+
+// FileURL returns a content part the server fetches from a public URL.
+func FileURL(url string) *Content {
+	return &Content{Content: &v1.Content_File{File: &v1.FileContent{Url: url}}}
+}
+
+// ImageGenerationAction limits what the image generation tool may do.
+type ImageGenerationAction string
+
+// Accepted ImageGenerationAction values.
+const (
+	ImageGenerationAuto     ImageGenerationAction = "auto"
+	ImageGenerationGenerate ImageGenerationAction = "generate"
+	ImageGenerationEdit     ImageGenerationAction = "edit"
+)
+
+// ImageGenerationTool lets the model generate or edit images. An empty
+// action leaves the choice to the server ("auto").
+func ImageGenerationTool(action ImageGenerationAction) (*Tool, error) {
+	ig := &v1.ImageGeneration{}
+	switch action {
+	case "":
+	case ImageGenerationAuto, ImageGenerationGenerate, ImageGenerationEdit:
+		ig.Action = proto.String(string(action))
+	default:
+		return nil, &ValidationError{Param: "action", Value: string(action), Accepted: []string{"auto", "generate", "edit"}}
+	}
+	return &Tool{Tool: &v1.Tool_ImageGeneration{ImageGeneration: ig}}, nil
+}
+
+// AttachmentSearchTool lets the model search the files attached to the
+// conversation. limit caps the matches; 0 leaves the server default.
+func AttachmentSearchTool(limit int32) *Tool {
+	as := &v1.AttachmentSearch{}
+	if limit > 0 {
+		as.Limit = proto.Int32(limit)
+	}
+	return &Tool{Tool: &v1.Tool_AttachmentSearch{AttachmentSearch: as}}
+}
+
+// SearchParameters controls the legacy live-search feature (realtime web,
+// news, X and RSS data merged into the context). Server-side tools such
+// as WebSearchTool are the newer way; this stays for parity with the
+// Python SDK's search_parameters.
+type SearchParameters = v1.SearchParameters
+
+// SearchMode values for SearchParameters.
+const (
+	SearchOff  = v1.SearchMode_OFF_SEARCH_MODE
+	SearchOn   = v1.SearchMode_ON_SEARCH_MODE
+	SearchAuto = v1.SearchMode_AUTO_SEARCH_MODE
+)
+
+// WithSearchParameters attaches live-search parameters to the request.
+func WithSearchParameters(p *SearchParameters) ChatOption {
+	return func(c *Chat) { c.req.SearchParameters = p }
+}

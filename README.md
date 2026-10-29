@@ -96,7 +96,7 @@ Errors from the API are `*xai.Error` with the gRPC code; `errors.Is(err, xai.Err
 
 ## Examples
 
-`examples/chat`, `examples/stream` and `examples/tools` are small programs against the real API; each needs `XAI_API_KEY`. The whole client was exercised against `api.x.ai` with a real key (auth, models, tokenize, chat sample/stream/tools/JSON/deferred, embeddings, files, image generation, batches, error mapping); `grok-4` resolves to a current internal build, so the examples name `grok-4.6` explicitly:
+`examples/chat`, `examples/stream`, `examples/tools`, `examples/structured`, `examples/files-chat` and `examples/image` are small programs against the real API; each needs `XAI_API_KEY`. The whole client was exercised against `api.x.ai` with a real key (auth, models, tokenize, chat sample/stream/tools/JSON/deferred, embeddings, files, image generation, batches, error mapping); `grok-4` resolves to a current internal build, so the examples name `grok-4.6` explicitly:
 
 ```sh
 XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
@@ -110,7 +110,7 @@ XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
 | Tokenize | done |
 | Chat (sample, stream, batch, stream batch, function tools, multi-output) | done |
 | Chat (deferred, stored completions, compact context) | done |
-| Chat (web_search, x_search, collections_search, MCP, code_execution options) | done |
+| Chat (web_search, x_search, collections_search, MCP, code_execution, image_generation, attachment_search; file content parts; live-search parameters) | done |
 | Files (upload, concurrent upload, list, content, delete, public URLs) | done |
 | Embed, Auth | done |
 | Image (generate, batch, url or base64, edit inputs) | done |

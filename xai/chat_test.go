@@ -2,6 +2,7 @@ package xai
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"os"
@@ -470,5 +471,85 @@ func TestChatStreamStopsWhenTheContextIsCanceled(t *testing.T) {
 	}
 	for range s2.All() {
 		t.Fatal("stream yielded after an early break")
+	}
+}
+
+func TestFileContentAndNewTools(t *testing.T) {
+	if FileRef("f1").GetFile().GetFileId() != "f1" || FileURL("https://x/a.pdf").GetFile().GetUrl() != "https://x/a.pdf" {
+		t.Error("file ref / url")
+	}
+	fb, err := FileBytes("a.txt", []byte("hi"), "text/plain")
+	if err != nil || string(fb.GetFile().GetData()) != "hi" || fb.GetFile().GetFilename() != "a.txt" || fb.GetFile().GetMimeType() != "text/plain" {
+		t.Errorf("file bytes: %v %v", fb, err)
+	}
+	if _, err := FileBytes("a.txt", nil, ""); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("empty bytes: %v", err)
+	}
+	ig, err := ImageGenerationTool(ImageGenerationEdit)
+	if err != nil || ig.GetImageGeneration().GetAction() != "edit" {
+		t.Errorf("image generation tool: %v %v", ig, err)
+	}
+	if ig, err := ImageGenerationTool(""); err != nil || ig.GetImageGeneration().Action != nil {
+		t.Errorf("default action: %v %v", ig, err)
+	}
+	if _, err := ImageGenerationTool("paint"); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("bad action: %v", err)
+	}
+	if AttachmentSearchTool(5).GetAttachmentSearch().GetLimit() != 5 || AttachmentSearchTool(0).GetAttachmentSearch().Limit != nil {
+		t.Error("attachment search limit")
+	}
+	c, _ := New(WithAPIKey("k"), WithInsecure())
+	defer c.Close()
+	ch := c.Chat("m", WithTools(AttachmentSearchTool(0)), WithSearchParameters(&SearchParameters{Mode: SearchAuto, ReturnCitations: true}))
+	if !ch.usesServerSideTools() || ch.Request().GetSearchParameters().GetMode() != SearchAuto {
+		t.Error("attachment search is server-side; search parameters attached")
+	}
+}
+
+func TestHostsFromEnvironmentAndUserAgent(t *testing.T) {
+	t.Setenv("XAI_API_HOST", "api.example.test:8443")
+	t.Setenv("XAI_MANAGEMENT_API_HOST", "mgmt.example.test")
+	c, err := New(WithAPIKey("k"), WithManagementAPIKey("m"), WithInsecure(), WithUserAgent("my-app/1.2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if c.apiHost != "api.example.test:8443" || c.mgmt.target != "mgmt.example.test:443" {
+		t.Errorf("hosts: %q %q", c.apiHost, c.mgmt.target)
+	}
+	// An explicit option still wins over the environment.
+	c2, _ := New(WithAPIKey("k"), WithAPIHost("other.test"), WithInsecure())
+	defer c2.Close()
+	if c2.apiHost != "other.test:443" {
+		t.Errorf("explicit host lost: %q", c2.apiHost)
+	}
+}
+
+func TestImageOutputsParseTheEnvelope(t *testing.T) {
+	png := []byte{0x89, 'P', 'N', 'G'}
+	env := `{"__type":"image_generation_result","result":"data:image/png;base64,` + base64.StdEncoding.EncodeToString(png) + `","image_uuid":"img-1"}`
+	pb := &v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{
+		{Index: 0, Message: &v1.CompletionMessage{Role: v1.MessageRole_ROLE_ASSISTANT, ToolCalls: []*v1.ToolCall{{Id: "c1", Type: v1.ToolCallType_TOOL_CALL_TYPE_IMAGE_GENERATION_TOOL}}}},
+		{Index: 1, Message: &v1.CompletionMessage{Role: v1.MessageRole_ROLE_TOOL, Content: env, ToolCalls: []*v1.ToolCall{{Id: "c1", Type: v1.ToolCallType_TOOL_CALL_TYPE_IMAGE_GENERATION_TOOL, Status: v1.ToolCallStatus_TOOL_CALL_STATUS_COMPLETED}}}},
+		{Index: 2, Message: &v1.CompletionMessage{Role: v1.MessageRole_ROLE_ASSISTANT, Content: "Here is your image."}},
+	}}
+	r := newResponse(pb, allOutputs)
+	outs, err := r.ImageOutputs()
+	if err != nil || len(outs) != 1 {
+		t.Fatalf("outputs: %d %v", len(outs), err)
+	}
+	o := outs[0]
+	if string(o.Image) != string(png) || o.MIMEType != "image/png" || o.ImageUUID != "img-1" || o.ToolCall.GetId() != "c1" {
+		t.Errorf("parsed: %+v", o)
+	}
+	if r.Content() != "Here is your image." {
+		t.Errorf("content: %q", r.Content())
+	}
+	bad := newResponse(&v1.GetChatCompletionResponse{Outputs: []*v1.CompletionOutput{
+		{Message: &v1.CompletionMessage{Role: v1.MessageRole_ROLE_TOOL, Content: "not json", ToolCalls: []*v1.ToolCall{{Type: v1.ToolCallType_TOOL_CALL_TYPE_IMAGE_GENERATION_TOOL, Status: v1.ToolCallStatus_TOOL_CALL_STATUS_COMPLETED}}}},
+	}}, allOutputs)
+	var jerr *JSONError
+	if _, err := bad.ImageOutputs(); !errors.As(err, &jerr) {
+		t.Errorf("malformed envelope: %v", err)
 	}
 }

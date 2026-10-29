@@ -17,7 +17,10 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `chat.delete_stored_completion(id)` | `Client.DeleteStoredCompletion(ctx, id)` |
 | `user(...)`, `system(...)`, `assistant(...)`, `developer(...)`, `tool_result(...)` | `User(...)`, `System(...)`, `Assistant(...)`, `Developer(...)`, `ToolResult(...)` |
 | `text(...)`, `image(url, detail)` | `Text(...)`, `ImageURL(url, detail)` |
-| `tool(...)`, `web_search(...)`, `x_search(...)`, `code_execution()`, `collections_search(...)`, `mcp(...)` | `FunctionTool(...)`, `WebSearchTool(...)`, `XSearchTool(...)`, `CodeExecutionTool()`, `CollectionsSearchTool(...)`, `MCPTool(...)` |
+| `file(file_id=...)`, `file(data=..., filename=...)`, `file(url=...)` | `FileRef(id)`, `FileBytes(name, data, mimeType)`, `FileURL(url)` |
+| `tool(...)`, `web_search(...)`, `x_search(...)`, `code_execution()`, `collections_search(...)`, `mcp(...)`, `image_generation(action)`, `attachment_search(...)` | `FunctionTool(...)`, `WebSearchTool(...)`, `XSearchTool(...)`, `CodeExecutionTool()`, `CollectionsSearchTool(...)`, `MCPTool(...)`, `ImageGenerationTool(action)`, `AttachmentSearchTool(limit)` |
+| `chat.create(..., search_parameters=SearchParameters(...))` | `WithSearchParameters(&xai.SearchParameters{Mode: xai.SearchAuto, ...})` |
+| `Response.image_outputs`, `.tool_outputs` | `Response.ImageOutputs()` (decoded bytes, MIME type, uuid, tool call), `Response.ToolOutputs()` |
 | `files.upload(path_or_bytes, filename=...)` | `Files.UploadFile(ctx, path)`, `Files.UploadBytes(ctx, name, data)`, `Files.Upload(ctx, name, r, size)` |
 | `files.batch_upload(files, batch_size)` | `Files.UploadAll(ctx, paths, concurrency, opts...)` (results in input order, per-file errors) |
 | `files.list(...)` | `Files.ListPage(ctx, limit, order, token)`; `Files.All(ctx, order)` walks every page, so bound its context on large accounts |
@@ -64,5 +67,6 @@ Differences worth knowing:
 - `Image.URL()` and `Image.Base64()` distinguish "returned in the other format" (`ErrImageFormat`) from "withheld by moderation" (`ErrImageModerated`); the Python SDK raises `ValueError` for both.
 - `*Error` exposes `Status()` for server-attached details and `Retryable()`; the Python SDK leaves that to `grpc.RpcError`.
 - Image and video storage (`storage_options`) is `WithImageStorage` / `WithVideoStorage` with a `StorageOptions` value.
+- Hosts: `WithAPIHost` / `WithManagementAPIHost` also read `XAI_API_HOST` / `XAI_MANAGEMENT_API_HOST` from the environment (the Python SDK takes them as arguments only); `WithUserAgent(suffix)` appends an application id to the `User-Agent`.
 - Telemetry: `WithTracerProvider` instead of the `Telemetry` config object; span names and `gen_ai.*` attributes match, `WithoutSensitiveAttributes` stands in for `XAI_SDK_DISABLE_TRACING_SENSITIVE_ATTRIBUTES`. The OTLP exporter is the application's choice; the client code imports only the OpenTelemetry API (the SDK appears in go.mod for the tests alone).
 - `Sample` (the legacy sampling service) is not planned.

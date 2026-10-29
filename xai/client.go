@@ -29,9 +29,11 @@ const (
 	// Python SDK uses the same 27 minutes.
 	DefaultTimeout = 27 * time.Minute
 
-	envAPIKey           = "XAI_API_KEY"
-	envManagementAPIKey = "XAI_MANAGEMENT_KEY"
-	maxMessageBytes     = 20 << 20
+	envAPIKey            = "XAI_API_KEY"
+	envManagementAPIKey  = "XAI_MANAGEMENT_KEY"
+	envAPIHost           = "XAI_API_HOST"
+	envManagementAPIHost = "XAI_MANAGEMENT_API_HOST"
+	maxMessageBytes      = 20 << 20
 )
 
 // ErrMissingAPIKey is returned by New when no API key is given and
@@ -52,6 +54,7 @@ type config struct {
 	managementAPIHost     string
 	tracerProvider        trace.TracerProvider
 	noSensitiveAttributes bool
+	userAgentSuffix       string
 	timeout               time.Duration
 	metadata              metadata.MD
 	insecure              bool
@@ -96,6 +99,13 @@ func WithMetadata(md map[string]string) Option {
 // Intended for local test servers only.
 func WithInsecure() Option { return func(c *config) { c.insecure = true } }
 
+// WithUserAgent appends an application identifier to the User-Agent the
+// client sends ("XaiSdkGo/<version> <suffix>"), so server logs can tell
+// applications apart. Keep it short, for example "my-service/1.4".
+func WithUserAgent(suffix string) Option {
+	return func(c *config) { c.userAgentSuffix = suffix }
+}
+
 // WithDialOptions appends raw grpc.DialOptions after the SDK's own, so they
 // can override message limits, keepalive or the service config.
 func WithDialOptions(opts ...grpc.DialOption) Option {
@@ -127,8 +137,8 @@ type Client struct {
 // New creates a Client. It does not contact the API; the first call dials.
 func New(opts ...Option) (*Client, error) {
 	cfg := config{
-		apiHost:           DefaultAPIHost,
-		managementAPIHost: DefaultManagementAPIHost,
+		apiHost:           firstNonEmpty(os.Getenv(envAPIHost), DefaultAPIHost),
+		managementAPIHost: firstNonEmpty(os.Getenv(envManagementAPIHost), DefaultManagementAPIHost),
 		timeout:           DefaultTimeout,
 		metadata:          metadata.MD{},
 	}
@@ -152,7 +162,7 @@ func New(opts ...Option) (*Client, error) {
 	target := withDefaultPort(cfg.apiHost)
 
 	dialOpts := []grpc.DialOption{
-		grpc.WithUserAgent(userAgent),
+		grpc.WithUserAgent(strings.TrimSpace(userAgent + " " + cfg.userAgentSuffix)),
 		grpc.WithDefaultCallOptions(
 			grpc.MaxCallSendMsgSize(maxMessageBytes),
 			grpc.MaxCallRecvMsgSize(maxMessageBytes),
@@ -182,6 +192,15 @@ func New(opts ...Option) (*Client, error) {
 		c.mgmt.md = sdkMetadata(cfg.metadata, cfg.managementAPIKey)
 	}
 	return c, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // sdkMetadata is the per-call metadata: caller entries, the bearer token
