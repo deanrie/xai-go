@@ -55,11 +55,11 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `Telemetry(...)` / `XAI_SDK_DISABLE_TRACING_SENSITIVE_ATTRIBUTES` | `WithTracerProvider(tp)`, `WithoutSensitiveAttributes()` |
 | (no Python client for the `Embedder` service) | `Embed.Embed(ctx, model, inputs...)`, `Embed.EmbedBase64(...)` |
 | `collections.create(name, ...)` | `Collections.Create(ctx, name, opts...)` (Collections is experimental: generated from recovered protos until xai-org/xai-proto#83 is resolved) |
-| `collections.list(...)`, `.get(id)`, `.update(id, ...)`, `.delete(id)` | `Collections.All(ctx, order)`, `.Get`, `.Update(ctx, id, opts...)`, `.Delete` |
+| `collections.list(limit, order, sort_by, filter, pagination_token)`, `.get(id)`, `.update(id, ...)`, `.delete(id)` | `Collections.ListPage(ctx, order, token, WithCollectionsLimit/SortBy/Filter...)`, `Collections.All(ctx, order, opts...)`, `.Get`, `.Update(ctx, id, opts...)`, `.Delete` |
 | `collections.search(query, collection_ids, ...)` | `Documents.Search(ctx, query, collectionIDs, opts...)` |
 | `collections.upload_document(id, data, name, fields)` | `Collections.UploadDocument(ctx, id, name, data, fields, poll)` |
 | `collections.add_existing_document(id, file_id, fields)` | `Collections.AddDocument(ctx, id, fileID, fields)` |
-| `collections.list_documents(id, ...)` | `Collections.Documents(ctx, id, order)` |
+| `collections.list_documents(id, limit, order, sort_by, pagination_token, filter)` | `Collections.DocumentsPage(ctx, id, order, token, WithDocumentsLimit/SortBy/Filter...)`, `Collections.Documents(ctx, id, order, opts...)` |
 | `collections.get_document(file_id, id)` | `Collections.GetDocument(ctx, id, fileID)`, `Collections.WaitForDocument(...)` |
 | `collections.batch_get_documents(id, file_ids)` | `Collections.BatchGetDocuments(ctx, id, fileIDs...)` |
 | `collections.remove_document(id, file_id)` | `Collections.RemoveDocument(ctx, id, fileID)` |

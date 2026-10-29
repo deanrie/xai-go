@@ -215,25 +215,119 @@ func (cs *Collections) Delete(ctx context.Context, collectionID string) (err err
 	return wrapErr(err)
 }
 
+// CollectionSortBy selects the field collections are sorted by.
+type CollectionSortBy string
+
+// CollectionSortBy values.
+const (
+	CollectionSortByName CollectionSortBy = "name"
+	CollectionSortByAge  CollectionSortBy = "age"
+)
+
+var collectionSortByValues = map[CollectionSortBy]collections.CollectionsSortBy{
+	CollectionSortByName: collections.CollectionsSortBy_COLLECTIONS_SORT_BY_NAME,
+	CollectionSortByAge:  collections.CollectionsSortBy_COLLECTIONS_SORT_BY_AGE,
+}
+
+// CollectionsListOption narrows or sizes a collection listing.
+type CollectionsListOption func(*collections.ListCollectionsRequest) error
+
+// WithCollectionsLimit caps one page at n collections (1..100); 0 keeps the
+// server default.
+func WithCollectionsLimit(n int32) CollectionsListOption {
+	return func(r *collections.ListCollectionsRequest) error {
+		if n != 0 {
+			r.Limit = proto.Int32(n)
+		}
+		return nil
+	}
+}
+
+// WithCollectionsSortBy sorts by name or age instead of the server default.
+func WithCollectionsSortBy(by CollectionSortBy) CollectionsListOption {
+	return func(r *collections.ListCollectionsRequest) error {
+		v, ok := collectionSortByValues[by]
+		if !ok {
+			return &ValidationError{Param: "sort_by", Value: string(by), Accepted: []string{"name", "age"}}
+		}
+		r.SortBy = v.Enum()
+		return nil
+	}
+}
+
+// WithCollectionsFilter applies a server-side filter expression over
+// collection_name, created_at and documents_count, for example
+// `collection_name:"SEC" AND documents_count:>10`.
+func WithCollectionsFilter(expr string) CollectionsListOption {
+	return func(r *collections.ListCollectionsRequest) error {
+		if expr != "" {
+			r.Filter = proto.String(expr)
+		}
+		return nil
+	}
+}
+
+// CollectionsPage is one page of collections plus the token for the next.
+type CollectionsPage struct {
+	Collections []*CollectionMetadata
+	NextToken   string
+}
+
+func (cs *Collections) listRequest(order ListOrder, token string, opts []CollectionsListOption) (*collections.ListCollectionsRequest, error) {
+	ord, err := sharedOrdering(order)
+	if err != nil {
+		return nil, err
+	}
+	req := &collections.ListCollectionsRequest{Order: ord.Enum()}
+	if token != "" {
+		req.PaginationToken = proto.String(token)
+	}
+	for _, o := range opts {
+		if err := o(req); err != nil {
+			return nil, err
+		}
+	}
+	return req, nil
+}
+
+// ListPage returns one page of collections starting at token ("" for the
+// first page). An empty NextToken means the last page.
+func (cs *Collections) ListPage(ctx context.Context, order ListOrder, token string, opts ...CollectionsListOption) (_ *CollectionsPage, err error) {
+	stub, err := cs.stub()
+	if err != nil {
+		return nil, err
+	}
+	req, err := cs.listRequest(order, token, opts)
+	if err != nil {
+		return nil, err
+	}
+	ctx, end := cs.c.startSpan(ctx, "collections.list_collections", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
+	ctx, cancel := cs.c.ManagementCallContext(ctx)
+	defer cancel()
+	resp, err := stub.ListCollections(ctx, req)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	return &CollectionsPage{Collections: resp.GetCollections(), NextToken: resp.GetPaginationToken()}, nil
+}
+
 // All iterates over every collection, fetching pages as needed. It walks
-// the whole list; bound ctx on accounts with many collections.
-func (cs *Collections) All(ctx context.Context, order ListOrder) iter.Seq2[*CollectionMetadata, error] {
+// the whole list; bound ctx on accounts with many collections, or use
+// ListPage.
+func (cs *Collections) All(ctx context.Context, order ListOrder, opts ...CollectionsListOption) iter.Seq2[*CollectionMetadata, error] {
 	return func(yield func(*CollectionMetadata, error) bool) {
 		stub, err := cs.stub()
 		if err != nil {
 			yield(nil, err)
 			return
 		}
-		ord, err := sharedOrdering(order)
-		if err != nil {
-			yield(nil, err)
-			return
-		}
 		token := ""
 		for {
-			req := &collections.ListCollectionsRequest{Order: ord.Enum()}
-			if token != "" {
-				req.PaginationToken = proto.String(token)
+			req, err := cs.listRequest(order, token, opts)
+			if err != nil {
+				yield(nil, err)
+				return
 			}
 			cctx, cancel := cs.c.ManagementCallContext(ctx)
 			resp, err := stub.ListCollections(cctx, req)
@@ -313,24 +407,120 @@ func (cs *Collections) GetDocument(ctx context.Context, collectionID, fileID str
 	return doc, nil
 }
 
-// Documents iterates over the documents of a collection.
-func (cs *Collections) Documents(ctx context.Context, collectionID string, order ListOrder) iter.Seq2[*DocumentMetadata, error] {
+// DocumentSortBy selects the field documents are sorted by.
+type DocumentSortBy string
+
+// DocumentSortBy values.
+const (
+	DocumentSortByName DocumentSortBy = "name"
+	DocumentSortByAge  DocumentSortBy = "age"
+	DocumentSortBySize DocumentSortBy = "size"
+)
+
+var documentSortByValues = map[DocumentSortBy]collections.DocumentsSortBy{
+	DocumentSortByName: collections.DocumentsSortBy_DOCUMENTS_SORT_BY_NAME,
+	DocumentSortByAge:  collections.DocumentsSortBy_DOCUMENTS_SORT_BY_AGE,
+	DocumentSortBySize: collections.DocumentsSortBy_DOCUMENTS_SORT_BY_SIZE,
+}
+
+// DocumentsListOption narrows or sizes a document listing.
+type DocumentsListOption func(*collections.ListDocumentsRequest) error
+
+// WithDocumentsLimit caps one page at n documents (1..100); 0 keeps the
+// server default.
+func WithDocumentsLimit(n int32) DocumentsListOption {
+	return func(r *collections.ListDocumentsRequest) error {
+		if n != 0 {
+			r.Limit = proto.Int32(n)
+		}
+		return nil
+	}
+}
+
+// WithDocumentsSortBy sorts by name, age or size instead of the server
+// default.
+func WithDocumentsSortBy(by DocumentSortBy) DocumentsListOption {
+	return func(r *collections.ListDocumentsRequest) error {
+		v, ok := documentSortByValues[by]
+		if !ok {
+			return &ValidationError{Param: "sort_by", Value: string(by), Accepted: []string{"name", "age", "size"}}
+		}
+		r.SortBy = v.Enum()
+		return nil
+	}
+}
+
+// WithDocumentsFilter applies a server-side filter expression over document
+// fields and metadata.
+func WithDocumentsFilter(expr string) DocumentsListOption {
+	return func(r *collections.ListDocumentsRequest) error {
+		if expr != "" {
+			r.Filter = proto.String(expr)
+		}
+		return nil
+	}
+}
+
+// DocumentsPage is one page of documents plus the token for the next.
+type DocumentsPage struct {
+	Documents []*DocumentMetadata
+	NextToken string
+}
+
+func (cs *Collections) documentsRequest(collectionID string, order ListOrder, token string, opts []DocumentsListOption) (*collections.ListDocumentsRequest, error) {
+	ord, err := sharedOrdering(order)
+	if err != nil {
+		return nil, err
+	}
+	req := &collections.ListDocumentsRequest{CollectionId: collectionID, Order: ord.Enum()}
+	if token != "" {
+		req.PaginationToken = proto.String(token)
+	}
+	for _, o := range opts {
+		if err := o(req); err != nil {
+			return nil, err
+		}
+	}
+	return req, nil
+}
+
+// DocumentsPage returns one page of a collection's documents starting at
+// token ("" for the first page). An empty NextToken means the last page.
+func (cs *Collections) DocumentsPage(ctx context.Context, collectionID string, order ListOrder, token string, opts ...DocumentsListOption) (_ *DocumentsPage, err error) {
+	stub, err := cs.stub()
+	if err != nil {
+		return nil, err
+	}
+	req, err := cs.documentsRequest(collectionID, order, token, opts)
+	if err != nil {
+		return nil, err
+	}
+	ctx, end := cs.c.startSpan(ctx, "collections.list_documents", cs.c.serverAttrs()...)
+	defer func() { end(err) }()
+	ctx, cancel := cs.c.ManagementCallContext(ctx)
+	defer cancel()
+	resp, err := stub.ListDocuments(ctx, req)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+	return &DocumentsPage{Documents: resp.GetDocuments(), NextToken: resp.GetPaginationToken()}, nil
+}
+
+// Documents iterates over the documents of a collection, fetching pages as
+// needed.
+func (cs *Collections) Documents(ctx context.Context, collectionID string, order ListOrder, opts ...DocumentsListOption) iter.Seq2[*DocumentMetadata, error] {
 	return func(yield func(*DocumentMetadata, error) bool) {
 		stub, err := cs.stub()
 		if err != nil {
 			yield(nil, err)
 			return
 		}
-		ord, err := sharedOrdering(order)
-		if err != nil {
-			yield(nil, err)
-			return
-		}
 		token := ""
 		for {
-			req := &collections.ListDocumentsRequest{CollectionId: collectionID, Order: ord.Enum()}
-			if token != "" {
-				req.PaginationToken = proto.String(token)
+			req, err := cs.documentsRequest(collectionID, order, token, opts)
+			if err != nil {
+				yield(nil, err)
+				return
 			}
 			cctx, cancel := cs.c.ManagementCallContext(ctx)
 			resp, err := stub.ListDocuments(cctx, req)

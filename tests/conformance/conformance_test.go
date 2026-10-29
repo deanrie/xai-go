@@ -690,6 +690,40 @@ func TestCollections(t *testing.T) {
 		t.Errorf("BatchGetDocuments: %d %v", len(batch), err)
 	}
 
+	// tests/server.py sorts by sort_by and honours order; two more documents
+	// make the ordering observable.
+	for _, n := range []string{"a-first.txt", "z-last.txt"} {
+		if _, err := cs.UploadDocument(t.Context(), col2.GetCollectionId(), n, []byte(n), nil, xai.PollOptions{Interval: 50 * time.Millisecond}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := cs.DocumentsPage(t.Context(), col2.GetCollectionId(), xai.Descending, "", xai.WithDocumentsSortBy(xai.DocumentSortByName), xai.WithDocumentsLimit(10))
+	if err != nil || len(page.Documents) != 3 || page.NextToken != "" {
+		t.Fatalf("DocumentsPage: %v %v", page, err)
+	}
+	if first, last := page.Documents[0].GetFileMetadata().GetName(), page.Documents[2].GetFileMetadata().GetName(); first != "z-last.txt" || last != "a-first.txt" {
+		t.Errorf("sorted by name descending: %q .. %q", first, last)
+	}
+	var ascending []string
+	for d, err := range cs.Documents(t.Context(), col2.GetCollectionId(), xai.Ascending, xai.WithDocumentsSortBy(xai.DocumentSortByName)) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		ascending = append(ascending, d.GetFileMetadata().GetName())
+	}
+	if len(ascending) != 3 || ascending[0] != "a-first.txt" {
+		t.Errorf("ascending: %v", ascending)
+	}
+	for _, err := range cs.Documents(t.Context(), col2.GetCollectionId(), xai.Ascending, xai.WithDocumentsSortBy("colour")) {
+		if !errors.Is(err, xai.ErrInvalidArgument) {
+			t.Errorf("bad sort_by: %v", err)
+		}
+	}
+	cpage, err := cs.ListPage(t.Context(), xai.Ascending, "", xai.WithCollectionsSortBy(xai.CollectionSortByName), xai.WithCollectionsFilter(`collection_name:"renamed"`))
+	if err != nil || len(cpage.Collections) == 0 {
+		t.Errorf("ListPage: %v %v", cpage, err)
+	}
+
 	// The management key is checked separately from the API key.
 	wrong := newClient(t, xai.WithManagementAPIKey("nope"))
 	if _, err := wrong.Collections().Get(t.Context(), "x"); !errors.Is(err, xai.ErrUnauthenticated) {
