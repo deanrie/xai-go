@@ -16,7 +16,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `chat.get_stored_completion(id)` | `Client.GetStoredCompletion(ctx, id)` |
 | `chat.delete_stored_completion(id)` | `Client.DeleteStoredCompletion(ctx, id)` |
 | `user(...)`, `system(...)`, `assistant(...)`, `developer(...)`, `tool_result(...)` | `User(...)`, `System(...)`, `Assistant(...)`, `Developer(...)`, `ToolResult(...)` |
-| `text(...)`, `image(url, detail)` | `Text(...)`, `ImageURL(url, detail)` |
+| `text(...)`, `image(url, detail)` | `Text(...)`, `ImageURL(url, detail)`, `ImageFile(fileID, detail)` (uploaded file as the image source; also accepted by `WithSourceImage` / `WithReferenceImages`, matching `image_file_id` / `image_file_ids`) |
 | `file(file_id=...)`, `file(data=..., filename=...)`, `file(url=...)` | `FileRef(id)`, `FileBytes(name, data, mimeType)`, `FileURL(url)` |
 | `tool(...)`, `web_search(...)`, `x_search(...)`, `code_execution()`, `collections_search(...)`, `mcp(...)`, `image_generation(action)`, `attachment_search(...)` | `FunctionTool(...)`, `WebSearchTool(...)`, `XSearchTool(...)`, `CodeExecutionTool()`, `CollectionsSearchTool(...)`, `MCPTool(...)`, `ImageGenerationTool(action)`, `AttachmentSearchTool(limit)` |
 | `chat.create(..., search_parameters=SearchParameters(...))` | `WithSearchParameters(&xai.SearchParameters{Mode: xai.SearchAuto, ...})` |
@@ -30,7 +30,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `Response.image_outputs`, `.tool_outputs` | `Response.ImageOutputs()` (decoded bytes, MIME type, uuid, tool call), `Response.ToolOutputs()` |
 | `files.upload(path_or_bytes, filename=...)` | `Files.UploadFile(ctx, path)`, `Files.UploadBytes(ctx, name, data)`, `Files.Upload(ctx, name, r, size)` |
 | `files.batch_upload(files, batch_size)` | `Files.UploadAll(ctx, paths, concurrency, opts...)` (results in input order, per-file errors) |
-| `files.list(...)` | `Files.ListPage(ctx, limit, order, token)`; `Files.All(ctx, order)` walks every page, so bound its context on large accounts |
+| `files.list(limit, order, sort_by, pagination_token, filter)` | `Files.ListPage(ctx, limit, order, token, WithFilesSortBy/WithFilesFilter...)`; `Files.All(ctx, order, opts...)` walks every page, so bound its context on large accounts |
 | `files.get(id)` | `Files.Get(ctx, id)` |
 | `files.delete(id)` | `Files.Delete(ctx, id)` |
 | `files.content(id)` | `Files.Content(ctx, id)`, `Files.ContentTo(ctx, id, w)` |

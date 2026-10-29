@@ -180,9 +180,51 @@ type ListPage struct {
 	NextToken string
 }
 
+// FileSortBy selects the field files are sorted by.
+type FileSortBy string
+
+// FileSortBy values.
+const (
+	FileSortByCreatedAt FileSortBy = "created_at"
+	FileSortByFilename  FileSortBy = "filename"
+	FileSortBySize      FileSortBy = "size"
+)
+
+var fileSortByValues = map[FileSortBy]v1.FilesSortBy{
+	FileSortByCreatedAt: v1.FilesSortBy_FILES_SORT_BY_CREATED_AT,
+	FileSortByFilename:  v1.FilesSortBy_FILES_SORT_BY_FILENAME,
+	FileSortBySize:      v1.FilesSortBy_FILES_SORT_BY_SIZE,
+}
+
+// FilesListOption narrows a file listing.
+type FilesListOption func(*v1.ListFilesRequest) error
+
+// WithFilesSortBy sorts by created_at, filename or size instead of the
+// server default.
+func WithFilesSortBy(by FileSortBy) FilesListOption {
+	return func(r *v1.ListFilesRequest) error {
+		v, ok := fileSortByValues[by]
+		if !ok {
+			return &ValidationError{Param: "sort_by", Value: string(by), Accepted: []string{"created_at", "filename", "size"}}
+		}
+		r.SortBy = v.Enum()
+		return nil
+	}
+}
+
+// WithFilesFilter applies a server-side filter expression to the listing.
+func WithFilesFilter(expr string) FilesListOption {
+	return func(r *v1.ListFilesRequest) error {
+		if expr != "" {
+			r.Filter = proto.String(expr)
+		}
+		return nil
+	}
+}
+
 // ListPage returns one page of at most limit files (1..100, 0 means the
 // server default of 100) starting at token.
-func (f *Files) ListPage(ctx context.Context, limit int32, order ListOrder, token string) (_ *ListPage, err error) {
+func (f *Files) ListPage(ctx context.Context, limit int32, order ListOrder, token string, opts ...FilesListOption) (_ *ListPage, err error) {
 	req := &v1.ListFilesRequest{Limit: limit}
 	switch order {
 	case Ascending:
@@ -194,6 +236,11 @@ func (f *Files) ListPage(ctx context.Context, limit int32, order ListOrder, toke
 	}
 	if token != "" {
 		req.PaginationToken = proto.String(token)
+	}
+	for _, o := range opts {
+		if err := o(req); err != nil {
+			return nil, err
+		}
 	}
 	ctx, end := f.c.startSpan(ctx, "file.list", f.c.serverAttrs()...)
 	defer func() { end(err) }()
@@ -210,11 +257,11 @@ func (f *Files) ListPage(ctx context.Context, limit int32, order ListOrder, toke
 // is non-nil only for the final, failed step. It walks the whole account:
 // one with thousands of files takes minutes, so bound ctx or use ListPage
 // when you only need the newest entries.
-func (f *Files) All(ctx context.Context, order ListOrder) iter.Seq2[*File, error] {
+func (f *Files) All(ctx context.Context, order ListOrder, opts ...FilesListOption) iter.Seq2[*File, error] {
 	return func(yield func(*File, error) bool) {
 		token := ""
 		for {
-			page, err := f.ListPage(ctx, 0, order, token)
+			page, err := f.ListPage(ctx, 0, order, token, opts...)
 			if err != nil {
 				yield(nil, err)
 				return

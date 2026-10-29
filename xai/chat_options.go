@@ -71,6 +71,23 @@ func ImageURL(url string, detail ImageDetail) (*Content, error) {
 	}}}, nil
 }
 
+// ImageFile returns an image content part that refers to an uploaded file
+// (see Files.Upload) instead of a URL. It is accepted wherever ImageURL is,
+// including WithSourceImage and WithReferenceImages for image generation.
+func ImageFile(fileID string, detail ImageDetail) (*Content, error) {
+	if detail == "" {
+		detail = ImageDetailAuto
+	}
+	d, ok := imageDetailValues[detail]
+	if !ok {
+		return nil, &ValidationError{Param: "detail", Value: string(detail), Accepted: []string{"auto", "low", "high"}}
+	}
+	return &Content{Content: &v1.Content_ImageUrl{ImageUrl: &v1.ImageUrlContent{
+		Source: &v1.ImageUrlContent_FileId{FileId: fileID},
+		Detail: d,
+	}}}, nil
+}
+
 // Request parameters.
 
 // WithMaxTokens caps the number of generated tokens.

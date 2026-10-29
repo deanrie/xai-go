@@ -118,6 +118,15 @@ func TestChatOptionsValidateLiterals(t *testing.T) {
 	if err != nil || img.GetImageUrl().GetDetail() != v1.ImageDetail_DETAIL_AUTO {
 		t.Errorf("ImageURL default detail: %v %v", img, err)
 	}
+	if fi, err := ImageFile("file-1", ImageDetailHigh); err != nil || fi.GetImageUrl().GetFileId() != "file-1" || fi.GetImageUrl().GetDetail() != v1.ImageDetail_DETAIL_HIGH {
+		t.Errorf("ImageFile: %v %v", fi, err)
+	}
+	if _, err := ImageFile("file-1", "medium"); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("ImageFile with an unknown detail: %v", err)
+	}
+	if _, err := c.Files().ListPage(context.Background(), 0, Ascending, "", WithFilesSortBy("colour")); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("files sort_by validation: %v", err)
+	}
 
 	good := c.Chat("grok-4", WithMaxTokens(10), WithTemperature(0.2), WithReasoningEffort(ReasoningEffortLow), WithTools(FunctionTool("f", "d", `{}`)))
 	good.Append(System("be brief")).Append(User(Text("hi")))
