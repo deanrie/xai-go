@@ -186,6 +186,17 @@ func TestChatSample(t *testing.T) {
 	if u := resp.Usage(); u.GetTotalTokens() != 15 {
 		t.Errorf("usage = %v", u)
 	}
+	// tests/server.py sets system_fingerprint on every completion and never
+	// reports a cost or a service tier.
+	if resp.SystemFingerprint() != "dummy-fingerprint" {
+		t.Errorf("system fingerprint = %q", resp.SystemFingerprint())
+	}
+	if _, ok := resp.CostUSD(); ok {
+		t.Error("cost reported by a server that does not send one")
+	}
+	if resp.ServiceTier() != xai.ServiceTierDefault {
+		t.Errorf("service tier = %v", resp.ServiceTier())
+	}
 }
 
 // tests/sync/chat_test.py::test_sample_batch: n responses, each at its own

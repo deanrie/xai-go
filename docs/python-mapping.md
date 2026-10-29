@@ -20,6 +20,13 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `file(file_id=...)`, `file(data=..., filename=...)`, `file(url=...)` | `FileRef(id)`, `FileBytes(name, data, mimeType)`, `FileURL(url)` |
 | `tool(...)`, `web_search(...)`, `x_search(...)`, `code_execution()`, `collections_search(...)`, `mcp(...)`, `image_generation(action)`, `attachment_search(...)` | `FunctionTool(...)`, `WebSearchTool(...)`, `XSearchTool(...)`, `CodeExecutionTool()`, `CollectionsSearchTool(...)`, `MCPTool(...)`, `ImageGenerationTool(action)`, `AttachmentSearchTool(limit)` |
 | `chat.create(..., search_parameters=SearchParameters(...))` | `WithSearchParameters(&xai.SearchParameters{Mode: xai.SearchAuto, ...})` |
+| `chat.create(..., logprobs=True, top_logprobs=n)` | `WithLogprobs(n)` |
+| `chat.create(..., tool_choice="auto"/"none"/"required")`, `required_tool(name)` | `WithToolChoice(xai.ToolModeAuto/None/Required)`, `WithRequiredTool(name)` / `RequiredTool(name)` |
+| `chat.create(..., frequency_penalty=, presence_penalty=)` | `WithFrequencyPenalty(p)`, `WithPresencePenalty(p)` |
+| `chat.create(..., service_tier="priority")` | `WithServiceTier(xai.ServiceTierPriority)` |
+| `chat.create(..., include=["inline_citations", ...])` | `WithInclude(xai.IncludeInlineCitations, ...)` |
+| `chat.create(..., conversation_id=)` (telemetry label only) | `WithConversationID(id)` |
+| `Response.cost_usd`, `.created`, `.system_fingerprint`, `.service_tier`, `.logprobs`, `.server_side_tool_usage`, `.request_settings`, `.debug_output` | `CostUSD() (float64, bool)`, `Created()`, `SystemFingerprint()`, `ServiceTier()`, `Logprobs()`, `ServerSideToolUsage()`, `Settings()`, `DebugOutput()` |
 | `Response.image_outputs`, `.tool_outputs` | `Response.ImageOutputs()` (decoded bytes, MIME type, uuid, tool call), `Response.ToolOutputs()` |
 | `files.upload(path_or_bytes, filename=...)` | `Files.UploadFile(ctx, path)`, `Files.UploadBytes(ctx, name, data)`, `Files.Upload(ctx, name, r, size)` |
 | `files.batch_upload(files, batch_size)` | `Files.UploadAll(ctx, paths, concurrency, opts...)` (results in input order, per-file errors) |

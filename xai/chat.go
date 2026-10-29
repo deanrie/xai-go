@@ -10,6 +10,7 @@ import (
 	"io"
 	"iter"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -27,15 +28,19 @@ type (
 	SamplingUsage    = v1.SamplingUsage
 	InlineCitation   = v1.InlineCitation
 	CompletionOutput = v1.CompletionOutput
+	LogProbs         = v1.LogProbs
+	RequestSettings  = v1.RequestSettings
+	DebugOutput      = v1.DebugOutput
 )
 
 // Chat is a conversation plus request settings. Build it with
 // Client.Chat, add messages with Append, then call Sample, Stream or Defer.
 // A Chat is not safe for concurrent use.
 type Chat struct {
-	c   *Client
-	req *v1.GetCompletionsRequest
-	err error
+	c              *Client
+	req            *v1.GetCompletionsRequest
+	conversationID string
+	err            error
 }
 
 // ChatOption sets a request parameter.
@@ -433,6 +438,61 @@ func (r *Response) Usage() *SamplingUsage { return r.pb.GetUsage() }
 
 // Citations returns the URL citations for the whole response.
 func (r *Response) Citations() []string { return r.pb.GetCitations() }
+
+// usdPerTick converts SamplingUsage.cost_in_usd_ticks to dollars: one tick
+// is 1e-10 USD (usage.proto).
+const usdPerTick = 1e-10
+
+// CostUSD returns the cost of the request that produced this response, in
+// USD, and false when the server did not report one. It covers this gRPC
+// request only: for a multi-turn Chat, add the values up per turn. A request
+// with server-side tools runs the whole agentic loop inside one request, so
+// its cost is already complete.
+func (r *Response) CostUSD() (float64, bool) {
+	u := r.pb.GetUsage()
+	if u == nil || u.CostInUsdTicks == nil {
+		return 0, false
+	}
+	return float64(u.GetCostInUsdTicks()) * usdPerTick, true
+}
+
+// Created returns when the server created the response.
+func (r *Response) Created() time.Time { return r.pb.GetCreated().AsTime() }
+
+// SystemFingerprint identifies the backend configuration that produced the
+// response.
+func (r *Response) SystemFingerprint() string { return r.pb.GetSystemFingerprint() }
+
+// ServiceTier reports the processing tier applied to the request;
+// unspecified is reported as ServiceTierDefault, like the Python SDK.
+func (r *Response) ServiceTier() ServiceTier {
+	if t := r.pb.GetServiceTier(); t != v1.ServiceTier_SERVICE_TIER_UNSPECIFIED {
+		return t
+	}
+	return ServiceTierDefault
+}
+
+// Logprobs returns the token log probabilities of the exposed output when
+// the request asked for them with WithLogprobs, else nil.
+func (r *Response) Logprobs() *LogProbs { return r.output().GetLogprobs() }
+
+// ServerSideToolUsage counts the server-side tools the model used while
+// answering, keyed by the proto enum name (for example
+// "SERVER_SIDE_TOOL_WEB_SEARCH").
+func (r *Response) ServerSideToolUsage() map[string]int {
+	counts := map[string]int{}
+	for _, t := range r.pb.GetUsage().GetServerSideToolsUsed() {
+		counts[t.String()]++
+	}
+	return counts
+}
+
+// Settings returns the request settings the server applied, including any
+// defaults it filled in.
+func (r *Response) Settings() *RequestSettings { return r.pb.GetSettings() }
+
+// DebugOutput returns the server's debug output for the request, when any.
+func (r *Response) DebugOutput() *DebugOutput { return r.pb.GetDebugOutput() }
 
 // InlineCitations returns positioned citations of the exposed output.
 func (r *Response) InlineCitations() []*InlineCitation { return r.output().GetMessage().GetCitations() }

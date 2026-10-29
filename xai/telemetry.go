@@ -127,7 +127,13 @@ func (ch *Chat) chatRequestAttrs(operation string) []attribute.KeyValue {
 	if req.GetUser() != "" {
 		attrs = append(attrs, attribute.String("user_id", req.GetUser()))
 	}
-	if req.PreviousResponseId != nil {
+	if req.TopLogprobs != nil {
+		attrs = append(attrs, attribute.Int("gen_ai.request.top_logprobs", int(req.GetTopLogprobs())))
+	}
+	switch {
+	case ch.conversationID != "":
+		attrs = append(attrs, attribute.String("gen_ai.conversation.id", ch.conversationID))
+	case req.PreviousResponseId != nil:
 		attrs = append(attrs, attribute.String("gen_ai.conversation.id", req.GetPreviousResponseId()))
 	}
 	return attrs

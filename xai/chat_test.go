@@ -12,6 +12,8 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	v1 "github.com/deanrie/xai-go/internal/gen/xai/api/v1"
 )
@@ -551,5 +553,100 @@ func TestImageOutputsParseTheEnvelope(t *testing.T) {
 	var jerr *JSONError
 	if _, err := bad.ImageOutputs(); !errors.As(err, &jerr) {
 		t.Errorf("malformed envelope: %v", err)
+	}
+}
+
+func TestRequestOptionsForToolChoiceLogprobsPenaltiesTierInclude(t *testing.T) {
+	c, _ := New(WithAPIKey("k"), WithInsecure())
+	defer c.Close()
+	ch := c.Chat("m",
+		WithLogprobs(3),
+		WithFrequencyPenalty(0.5),
+		WithPresencePenalty(-0.25),
+		WithToolChoice(ToolModeRequired),
+		WithServiceTier(ServiceTierPriority),
+		WithInclude(IncludeInlineCitations, IncludeWebSearchCallOutput),
+		WithConversationID("conv-1"),
+	)
+	req := ch.Request()
+	if !req.GetLogprobs() || req.GetTopLogprobs() != 3 {
+		t.Errorf("logprobs: %v %d", req.GetLogprobs(), req.GetTopLogprobs())
+	}
+	if req.GetFrequencyPenalty() != 0.5 || req.GetPresencePenalty() != -0.25 {
+		t.Errorf("penalties: %v %v", req.GetFrequencyPenalty(), req.GetPresencePenalty())
+	}
+	if req.GetToolChoice().GetMode() != v1.ToolMode_TOOL_MODE_REQUIRED {
+		t.Errorf("tool choice: %v", req.GetToolChoice())
+	}
+	if req.GetServiceTier() != ServiceTierPriority || len(req.GetInclude()) != 2 || req.GetInclude()[0] != IncludeInlineCitations {
+		t.Errorf("tier/include: %v %v", req.GetServiceTier(), req.GetInclude())
+	}
+	if ch.conversationID != "conv-1" {
+		t.Errorf("conversation id: %q", ch.conversationID)
+	}
+	var seen bool
+	for _, a := range ch.chatRequestAttrs("sample") {
+		if string(a.Key) == "gen_ai.conversation.id" {
+			seen = true
+			if a.Value.AsString() != "conv-1" {
+				t.Errorf("conversation attr: %v", a.Value.AsString())
+			}
+		}
+	}
+	if !seen {
+		t.Error("gen_ai.conversation.id not set")
+	}
+
+	if c.Chat("m", WithRequiredTool("get_weather")).Request().GetToolChoice().GetFunctionName() != "get_weather" {
+		t.Error("required tool")
+	}
+	if _, err := c.Chat("m", WithToolChoice("maybe")).Append(User(Text("x"))).Sample(context.Background()); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("bad tool mode: %v", err)
+	}
+	if _, err := c.Chat("m", WithLogprobs(9)).Append(User(Text("x"))).Sample(context.Background()); !errors.Is(err, ErrInvalidArgument) {
+		t.Errorf("top_logprobs out of range: %v", err)
+	}
+}
+
+func TestResponseCostTierFingerprintAndToolUsage(t *testing.T) {
+	pb := &v1.GetChatCompletionResponse{
+		SystemFingerprint: "fp-1",
+		ServiceTier:       v1.ServiceTier_SERVICE_TIER_PRIORITY,
+		Created:           timestamppb.New(time.Unix(1_700_000_000, 0)),
+		Usage: &v1.SamplingUsage{
+			CostInUsdTicks: proto.Int64(12_500_000_000),
+			ServerSideToolsUsed: []v1.ServerSideTool{
+				v1.ServerSideTool_SERVER_SIDE_TOOL_WEB_SEARCH,
+				v1.ServerSideTool_SERVER_SIDE_TOOL_WEB_SEARCH,
+				v1.ServerSideTool_SERVER_SIDE_TOOL_X_SEARCH,
+			},
+		},
+		Outputs: []*v1.CompletionOutput{{
+			Index:    0,
+			Message:  &v1.CompletionMessage{Role: v1.MessageRole_ROLE_ASSISTANT, Content: "hi"},
+			Logprobs: &v1.LogProbs{Content: []*v1.LogProb{{Token: "hi", Logprob: -0.1}}},
+		}},
+	}
+	r := newResponse(pb, allOutputs)
+	if cost, ok := r.CostUSD(); !ok || cost != 1.25 {
+		t.Errorf("cost: %v %v", cost, ok)
+	}
+	if r.ServiceTier() != ServiceTierPriority || r.SystemFingerprint() != "fp-1" || r.Created().Unix() != 1_700_000_000 {
+		t.Errorf("tier/fingerprint/created: %v %q %v", r.ServiceTier(), r.SystemFingerprint(), r.Created())
+	}
+	usage := r.ServerSideToolUsage()
+	if usage["SERVER_SIDE_TOOL_WEB_SEARCH"] != 2 || usage["SERVER_SIDE_TOOL_X_SEARCH"] != 1 || len(usage) != 2 {
+		t.Errorf("tool usage: %v", usage)
+	}
+	if r.Logprobs().GetContent()[0].GetToken() != "hi" {
+		t.Errorf("logprobs: %v", r.Logprobs())
+	}
+
+	empty := newResponse(&v1.GetChatCompletionResponse{Usage: &v1.SamplingUsage{}}, allOutputs)
+	if _, ok := empty.CostUSD(); ok {
+		t.Error("cost reported without the field")
+	}
+	if empty.ServiceTier() != ServiceTierDefault || len(empty.ServerSideToolUsage()) != 0 || empty.Logprobs() != nil {
+		t.Errorf("defaults: %v %v %v", empty.ServiceTier(), empty.ServerSideToolUsage(), empty.Logprobs())
 	}
 }

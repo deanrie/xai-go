@@ -1,6 +1,7 @@
 package xai
 
 import (
+	"fmt"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -411,4 +412,118 @@ const (
 // WithSearchParameters attaches live-search parameters to the request.
 func WithSearchParameters(p *SearchParameters) ChatOption {
 	return func(c *Chat) { c.req.SearchParameters = p }
+}
+
+// WithLogprobs asks for log probabilities of the output tokens. topLogprobs
+// (0 to 8) is how many of the most likely alternatives to return at each
+// position; 0 returns only the chosen token's probability.
+func WithLogprobs(topLogprobs int32) ChatOption {
+	return func(c *Chat) {
+		if topLogprobs < 0 || topLogprobs > 8 {
+			c.fail(&ValidationError{Param: "top_logprobs", Value: fmt.Sprint(topLogprobs), Accepted: []string{"0..8"}})
+			return
+		}
+		c.req.Logprobs = true
+		c.req.TopLogprobs = proto.Int32(topLogprobs)
+	}
+}
+
+// WithFrequencyPenalty penalizes new tokens by how often they already appear
+// in the text (-2.0 to 2.0).
+func WithFrequencyPenalty(p float32) ChatOption {
+	return func(c *Chat) { c.req.FrequencyPenalty = proto.Float32(p) }
+}
+
+// WithPresencePenalty penalizes new tokens by whether they appear in the text
+// so far (-2.0 to 2.0).
+func WithPresencePenalty(p float32) ChatOption {
+	return func(c *Chat) { c.req.PresencePenalty = proto.Float32(p) }
+}
+
+// ToolMode controls whether the model may call tools.
+type ToolMode string
+
+// Accepted ToolMode values.
+const (
+	ToolModeAuto     ToolMode = "auto"
+	ToolModeNone     ToolMode = "none"
+	ToolModeRequired ToolMode = "required"
+)
+
+var toolModeValues = map[ToolMode]v1.ToolMode{
+	ToolModeAuto:     v1.ToolMode_TOOL_MODE_AUTO,
+	ToolModeNone:     v1.ToolMode_TOOL_MODE_NONE,
+	ToolModeRequired: v1.ToolMode_TOOL_MODE_REQUIRED,
+}
+
+// ToolChoice is the request's tool_choice setting.
+type ToolChoice = v1.ToolChoice
+
+// RequiredTool returns a ToolChoice that forces the model to call the named
+// tool, which must be one of the tools passed with WithTools.
+func RequiredTool(name string) *ToolChoice {
+	return &v1.ToolChoice{ToolChoice: &v1.ToolChoice_FunctionName{FunctionName: name}}
+}
+
+// WithToolChoice sets a tool mode: auto (the default), none, or required.
+// Use WithRequiredTool to force one specific tool.
+func WithToolChoice(mode ToolMode) ChatOption {
+	return func(c *Chat) {
+		v, ok := toolModeValues[mode]
+		if !ok {
+			c.fail(&ValidationError{Param: "tool_choice", Value: string(mode), Accepted: []string{"auto", "none", "required"}})
+			return
+		}
+		c.req.ToolChoice = &v1.ToolChoice{ToolChoice: &v1.ToolChoice_Mode{Mode: v}}
+	}
+}
+
+// WithRequiredTool forces the model to call the named tool.
+func WithRequiredTool(name string) ChatOption {
+	return func(c *Chat) { c.req.ToolChoice = RequiredTool(name) }
+}
+
+// ServiceTier selects the processing tier for a request.
+type ServiceTier = v1.ServiceTier
+
+// Service tiers. The response's ServiceTier reports which one was applied.
+const (
+	ServiceTierDefault  = v1.ServiceTier_SERVICE_TIER_DEFAULT
+	ServiceTierPriority = v1.ServiceTier_SERVICE_TIER_PRIORITY
+)
+
+// WithServiceTier requests a processing tier; priority gives higher
+// throughput at a higher price.
+func WithServiceTier(tier ServiceTier) ChatOption {
+	return func(c *Chat) { c.req.ServiceTier = tier }
+}
+
+// IncludeOption names an optional part of the output to include in the
+// response, such as inline citations or server-side tool call outputs.
+type IncludeOption = v1.IncludeOption
+
+// Include options. Tool-call outputs are returned as ROLE_TOOL outputs (see
+// Response.ToolOutputs); inline citations populate Response.InlineCitations.
+const (
+	IncludeVerboseStreaming            = v1.IncludeOption_INCLUDE_OPTION_VERBOSE_STREAMING
+	IncludeWebSearchCallOutput         = v1.IncludeOption_INCLUDE_OPTION_WEB_SEARCH_CALL_OUTPUT
+	IncludeXSearchCallOutput           = v1.IncludeOption_INCLUDE_OPTION_X_SEARCH_CALL_OUTPUT
+	IncludeCodeExecutionCallOutput     = v1.IncludeOption_INCLUDE_OPTION_CODE_EXECUTION_CALL_OUTPUT
+	IncludeCodeExecutionFilesOutput    = v1.IncludeOption_INCLUDE_OPTION_CODE_EXECUTION_FILES_OUTPUT
+	IncludeCollectionsSearchCallOutput = v1.IncludeOption_INCLUDE_OPTION_COLLECTIONS_SEARCH_CALL_OUTPUT
+	IncludeAttachmentSearchCallOutput  = v1.IncludeOption_INCLUDE_OPTION_ATTACHMENT_SEARCH_CALL_OUTPUT
+	IncludeMCPCallOutput               = v1.IncludeOption_INCLUDE_OPTION_MCP_CALL_OUTPUT
+	IncludeInlineCitations             = v1.IncludeOption_INCLUDE_OPTION_INLINE_CITATIONS
+	IncludeToolCallStreaming           = v1.IncludeOption_INCLUDE_OPTION_TOOL_CALL_STREAMING
+)
+
+// WithInclude lists the optional output parts to include in the response.
+func WithInclude(options ...IncludeOption) ChatOption {
+	return func(c *Chat) { c.req.Include = options }
+}
+
+// WithConversationID labels this conversation for telemetry
+// (gen_ai.conversation.id). It is not sent to the API.
+func WithConversationID(id string) ChatOption {
+	return func(c *Chat) { c.conversationID = id }
 }
