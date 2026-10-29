@@ -110,13 +110,13 @@ XAI_API_KEY=... go run ./examples/chat "What is a lighthouse for?"
 | Tokenize | done |
 | Chat (sample, stream, batch, stream batch, function tools, multi-output) | done |
 | Chat (deferred, stored completions, compact context) | done |
-| Chat (web_search, x_search, collections_search, MCP, code_execution, image_generation, attachment_search; file content parts; live-search parameters) | done |
-| Files (upload, concurrent upload, list, content, delete, public URLs) | done |
+| Chat (web_search, x_search, collections_search, MCP, code_execution, image_generation, attachment_search; file and file-backed image parts; live-search parameters; tool_choice, logprobs, penalties, service tier, include options) | done |
+| Files (upload, concurrent upload, list with sort and filter, content, delete, public URLs) | done |
 | Embed, Auth | done |
-| Image (generate, batch, url or base64, edit inputs) | done |
-| Video (start, poll, wait, extend) | done |
+| Image (generate, batch, url or base64, edit inputs from URLs or uploaded files, storage and public URLs, cost) | done |
+| Video (start, poll, wait, extend; `Video` accessors for URL, duration, storage, cost) | done |
 | Batch (chat, image and video requests; create, add, wait, results, cancel) | done |
-| Collections (create, update, list, documents, upload and wait, update document, batch get, delete) | experimental: generated from recovered protos until [xai-proto#83](https://github.com/xai-org/xai-proto/issues/83) is resolved; the Go API may change when the upstream file lands |
+| Collections (create, update, paged list with sort and filter, documents, upload and wait, update document, batch get, delete) | experimental: generated from recovered protos until [xai-proto#83](https://github.com/xai-org/xai-proto/issues/83) is resolved; the Go API may change when the upstream file lands |
 | Documents (search with semantic, keyword, hybrid retrieval) | done |
 | Telemetry (OpenTelemetry spans, Python SDK names and attributes) | done |
 | Sample (legacy) | not planned |
