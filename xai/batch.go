@@ -37,9 +37,9 @@ type BatchResult struct {
 	RequestID string
 	// Chat is set for chat requests that succeeded.
 	Chat *Response
-	// Image is set for image requests that succeeded.
+	// Image is set for image requests that succeeded; Images wraps it.
 	Image *ImageResponse
-	// Video is set for video requests that succeeded.
+	// Video is set for video requests that succeeded; VideoResult wraps it.
 	Video *VideoResponse
 	// Err is set when the request failed; it is an *Error with the gRPC
 	// code the server recorded.
@@ -63,6 +63,28 @@ func batchResultFromProto(pb *v1.BatchResult) *BatchResult {
 		r.Video = data.GetVideoResponse()
 	}
 	return r
+}
+
+// Images returns the generated images of an image request with the same
+// accessors as Images.Generate, or nil for other request kinds.
+func (r *BatchResult) Images() []*Image {
+	if r.Image == nil {
+		return nil
+	}
+	out := make([]*Image, 0, len(r.Image.GetImages()))
+	for _, g := range r.Image.GetImages() {
+		out = append(out, &Image{pb: g, resp: r.Image})
+	}
+	return out
+}
+
+// VideoResult returns the generated video of a video request with the same
+// accessors as Videos.Generate, or nil for other request kinds.
+func (r *BatchResult) VideoResult() *Video {
+	if r.Video == nil {
+		return nil
+	}
+	return &Video{pb: r.Video}
 }
 
 // Batches manages batches.

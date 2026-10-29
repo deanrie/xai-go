@@ -659,3 +659,36 @@ func TestResponseCostTierFingerprintAndToolUsage(t *testing.T) {
 		t.Errorf("defaults: %v %v %v", empty.ServiceTier(), empty.ServerSideToolUsage(), empty.Logprobs())
 	}
 }
+
+func TestImageAndVideoAccessors(t *testing.T) {
+	img := &Image{
+		pb: &v1.GeneratedImage{
+			Image:      &v1.GeneratedImage_Url{Url: "https://i/1.jpg"},
+			FileOutput: &v1.FileOutput{PublicUrl: proto.String("https://p/1")},
+		},
+		resp: &ImageResponse{Model: "grok-imagine-image", Usage: &v1.SamplingUsage{CostInUsdTicks: proto.Int64(700_000_000)}},
+	}
+	if img.PublicURL() != "https://p/1" || img.PublicURLError() != "" || img.RespectModeration() || img.Model() != "grok-imagine-image" {
+		t.Errorf("image accessors: %q %q %v %q", img.PublicURL(), img.PublicURLError(), img.RespectModeration(), img.Model())
+	}
+	if cost, ok := img.CostUSD(); !ok || cost != 0.07 {
+		t.Errorf("image cost: %v %v", cost, ok)
+	}
+
+	vid := &Video{pb: &VideoResponse{Model: "grok-imagine-video", Video: &v1.GeneratedVideo{Url: "https://v/1.mp4", Duration: 6}}}
+	if u, err := vid.URL(); err != nil || u != "https://v/1.mp4" || vid.Duration() != 6 || vid.PublicURL() != "" {
+		t.Errorf("video accessors: %q %v %d", u, err, vid.Duration())
+	}
+	if _, ok := vid.CostUSD(); ok {
+		t.Error("video cost without the field")
+	}
+	moderated := &Video{pb: &VideoResponse{Video: &v1.GeneratedVideo{RespectModeration: true}}}
+	if _, err := moderated.URL(); !errors.Is(err, ErrVideoModerated) || !moderated.RespectModeration() {
+		t.Errorf("moderated video: %v", err)
+	}
+
+	br := batchResultFromProto(&v1.BatchResult{BatchRequestId: "r1", Result: &v1.BatchResult_Response{Response: &v1.BatchResultData{Response: &v1.BatchResultData_VideoResponse{VideoResponse: vid.pb}}}})
+	if br.VideoResult() == nil || br.VideoResult().Duration() != 6 || br.Images() != nil {
+		t.Errorf("batch video result: %v", br)
+	}
+}

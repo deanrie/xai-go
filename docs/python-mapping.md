@@ -39,8 +39,10 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `image.sample(prompt, model, ...)` | `Images.Generate(ctx, model, prompt, opts...)` |
 | `image.sample_batch(prompt, model, n, ...)` | `Images.GenerateBatch(ctx, model, prompt, n, opts...)` |
 | `image.prepare(...)`, `video.prepare(...)` (batch items) | `BatchImageRequest(id, model, prompt, n, opts...)`, `BatchVideoRequest(id, model, prompt, opts...)` |
-| `ImageResponse.url`, `.base64`, `.image` | `Image.URL()`, `Image.Base64()`, `Image.Bytes()` |
-| `video.generate(...)` | `Videos.Generate(ctx, model, prompt, poll, opts...)` |
+| `ImageResponse.url`, `.base64`, `.image`, `.file_output`, `.storage_error`, `.public_url`, `.public_url_error`, `.respect_moderation`, `.model`, `.usage`, `.cost_usd` | `Image.URL()`, `.Base64()`, `.Bytes()`, `.FileOutput()`, `.StorageError()`, `.PublicURL()`, `.PublicURLError()`, `.RespectModeration()`, `.Model()`, `.Usage()`, `.CostUSD()` |
+| `video.generate(...)` | `Videos.Generate(ctx, model, prompt, poll, opts...)` returns `*Video` |
+| `VideoResponse.url`, `.duration`, `.file_output`, `.storage_error`, `.public_url`, `.public_url_error`, `.respect_moderation`, `.model`, `.usage`, `.cost_usd` | `Video.URL()` (`ErrVideoModerated` when withheld), `.Duration()`, `.FileOutput()`, `.StorageError()`, `.PublicURL()`, `.PublicURLError()`, `.RespectModeration()`, `.Model()`, `.Usage()`, `.CostUSD()`; `Video.Proto()` is the raw `VideoResponse` |
+| `BatchResult.response` as image / video | `BatchResult.Images()`, `BatchResult.VideoResult()` (raw protos stay in `.Image` / `.Video`) |
 | `video.start(...)`, `video.get(id)` | `Videos.Start(...)`, `Videos.Get(ctx, id)`, `Videos.Wait(ctx, id, poll, onProgress)` |
 | `video.extend(...)`, `video.extend_start(...)` | `Videos.Extend(...)`, `Videos.StartExtend(...)` |
 | `batch.create(name, input_file_id)` | `Batches.Create(ctx, name, inputFileID)` |

@@ -317,6 +317,29 @@ func (i *Image) FileOutput() *v1.FileOutput { return i.pb.GetFileOutput() }
 // or an empty string.
 func (i *Image) StorageError() string { return i.pb.GetStorageError() }
 
+// PublicURL returns the shareable URL created when WithImageStorage asked
+// for one, or an empty string. PublicURLError carries the reason when the
+// URL could not be created.
+func (i *Image) PublicURL() string { return i.pb.GetFileOutput().GetPublicUrl() }
+
+// PublicURLError returns the server's reason when the public URL could not
+// be created, or an empty string.
+func (i *Image) PublicURLError() string { return i.pb.GetFileOutput().GetPublicUrlError() }
+
+// RespectModeration reports whether the API withheld the image because of
+// moderation.
+func (i *Image) RespectModeration() bool { return i.pb.GetRespectModeration() }
+
+// Model returns the model that generated the image.
+func (i *Image) Model() string { return i.resp.GetModel() }
+
+// Usage returns the usage of the request that produced this image.
+func (i *Image) Usage() *SamplingUsage { return i.resp.GetUsage() }
+
+// CostUSD returns the request cost in USD, and false when the server did
+// not report one.
+func (i *Image) CostUSD() (float64, bool) { return costUSD(i.resp.GetUsage()) }
+
 // URL returns the image URL. ErrImageFormat if the image came back as
 // base64 instead, ErrImageModerated if the API withheld it.
 func (i *Image) URL() (string, error) {

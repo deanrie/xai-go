@@ -445,15 +445,22 @@ func TestVideosGenerate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.GetVideo().GetUrl() != "https://example.com/foo.mp4" || resp.GetVideo().GetDuration() != 8 {
-		t.Errorf("video = %v", resp.GetVideo())
+	if u, err := resp.URL(); err != nil || u != "https://example.com/foo.mp4" || resp.Duration() != 8 {
+		t.Errorf("video = %v %v", resp.Proto(), err)
+	}
+	if resp.Model() == "" || resp.RespectModeration() {
+		t.Errorf("model/moderation = %q %v", resp.Model(), resp.RespectModeration())
+	}
+	if _, ok := resp.CostUSD(); ok {
+		t.Error("cost reported by a server that does not send one")
 	}
 	if polls < 3 {
 		t.Errorf("polls = %d, want the two PENDING answers plus DONE", polls)
 	}
 
-	ext, err := c.Videos().Extend(t.Context(), "grok-imagine-video", "more", xai.VideoURL(resp.GetVideo().GetUrl()), 4, pollOpts)
-	if err != nil || ext.GetVideo().GetUrl() == "" {
+	url, _ := resp.URL()
+	ext, err := c.Videos().Extend(t.Context(), "grok-imagine-video", "more", xai.VideoURL(url), 4, pollOpts)
+	if err != nil || ext.Proto().GetVideo().GetUrl() == "" {
 		t.Errorf("Extend: %v %v", ext, err)
 	}
 	if _, err := c.Videos().Get(t.Context(), "missing"); !errors.Is(err, xai.ErrNotFound) {

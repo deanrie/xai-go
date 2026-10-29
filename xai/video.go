@@ -2,6 +2,7 @@ package xai
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"google.golang.org/protobuf/proto"
@@ -15,6 +16,60 @@ type VideoResponse = v1.VideoResponse
 
 // GeneratedVideo is the generated video itself (URL, duration, storage).
 type GeneratedVideo = v1.GeneratedVideo
+
+// Video is a finished video generation with accessors over the response.
+type Video struct {
+	pb *VideoResponse
+}
+
+// Proto returns the underlying response.
+func (v *Video) Proto() *VideoResponse { return v.pb }
+
+// URL returns the download URL of the video. ErrVideoModerated when the
+// API withheld it.
+func (v *Video) URL() (string, error) {
+	if u := v.pb.GetVideo().GetUrl(); u != "" {
+		return u, nil
+	}
+	return "", ErrVideoModerated
+}
+
+// Duration returns the video length in seconds.
+func (v *Video) Duration() int32 { return v.pb.GetVideo().GetDuration() }
+
+// RespectModeration reports whether the API withheld the video because of
+// moderation.
+func (v *Video) RespectModeration() bool { return v.pb.GetVideo().GetRespectModeration() }
+
+// FileOutput returns where the video was stored when WithVideoStorage was
+// used, or nil.
+func (v *Video) FileOutput() *v1.FileOutput { return v.pb.GetVideo().GetFileOutput() }
+
+// StorageError returns the server's reason when storing the video failed,
+// or an empty string.
+func (v *Video) StorageError() string { return v.pb.GetVideo().GetStorageError() }
+
+// PublicURL returns the shareable URL created on request, or an empty
+// string; PublicURLError carries the reason when it could not be created.
+func (v *Video) PublicURL() string { return v.pb.GetVideo().GetFileOutput().GetPublicUrl() }
+
+// PublicURLError returns the server's reason when the public URL could not
+// be created, or an empty string.
+func (v *Video) PublicURLError() string { return v.pb.GetVideo().GetFileOutput().GetPublicUrlError() }
+
+// Model returns the model that generated the video.
+func (v *Video) Model() string { return v.pb.GetModel() }
+
+// Usage returns the usage of the request.
+func (v *Video) Usage() *SamplingUsage { return v.pb.GetUsage() }
+
+// CostUSD returns the request cost in USD, and false when the server did
+// not report one.
+func (v *Video) CostUSD() (float64, bool) { return costUSD(v.pb.GetUsage()) }
+
+// ErrVideoModerated is returned by Video.URL when the API withheld the
+// video because it did not respect moderation rules.
+var ErrVideoModerated = errors.New("xai: video did not respect moderation rules")
 
 // VideoError reports a failed video generation with the server's code.
 type VideoError struct {
@@ -243,7 +298,7 @@ func (vs *Videos) Get(ctx context.Context, requestID string) (_ *VideoStatus, er
 // Wait polls until the request is done. onProgress, if set, receives each
 // progress value. Defaults follow DefaultPollInterval and
 // DefaultPollTimeout; video generation commonly needs a few minutes.
-func (vs *Videos) Wait(ctx context.Context, requestID string, opts PollOptions, onProgress func(int32)) (*VideoResponse, error) {
+func (vs *Videos) Wait(ctx context.Context, requestID string, opts PollOptions, onProgress func(int32)) (*Video, error) {
 	var result *VideoResponse
 	err := poll(ctx, opts, func(ctx context.Context) (bool, error) {
 		st, err := vs.Get(ctx, requestID)
@@ -261,11 +316,11 @@ func (vs *Videos) Wait(ctx context.Context, requestID string, opts PollOptions, 
 	if err != nil {
 		return nil, err
 	}
-	return result, nil
+	return &Video{pb: result}, nil
 }
 
 // Generate is Start followed by Wait.
-func (vs *Videos) Generate(ctx context.Context, model, prompt string, poll PollOptions, opts ...VideoOption) (*VideoResponse, error) {
+func (vs *Videos) Generate(ctx context.Context, model, prompt string, poll PollOptions, opts ...VideoOption) (*Video, error) {
 	id, err := vs.Start(ctx, model, prompt, opts...)
 	if err != nil {
 		return nil, err
@@ -274,7 +329,7 @@ func (vs *Videos) Generate(ctx context.Context, model, prompt string, poll PollO
 }
 
 // Extend is StartExtend followed by Wait.
-func (vs *Videos) Extend(ctx context.Context, model, prompt string, video *VideoSource, duration int32, poll PollOptions) (*VideoResponse, error) {
+func (vs *Videos) Extend(ctx context.Context, model, prompt string, video *VideoSource, duration int32, poll PollOptions) (*Video, error) {
 	id, err := vs.StartExtend(ctx, model, prompt, video, duration)
 	if err != nil {
 		return nil, err

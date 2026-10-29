@@ -448,8 +448,9 @@ const usdPerTick = 1e-10
 // request only: for a multi-turn Chat, add the values up per turn. A request
 // with server-side tools runs the whole agentic loop inside one request, so
 // its cost is already complete.
-func (r *Response) CostUSD() (float64, bool) {
-	u := r.pb.GetUsage()
+func (r *Response) CostUSD() (float64, bool) { return costUSD(r.pb.GetUsage()) }
+
+func costUSD(u *SamplingUsage) (float64, bool) {
 	if u == nil || u.CostInUsdTicks == nil {
 		return 0, false
 	}
