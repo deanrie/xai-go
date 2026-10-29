@@ -692,3 +692,30 @@ func TestImageAndVideoAccessors(t *testing.T) {
 		t.Errorf("batch video result: %v", br)
 	}
 }
+
+func TestChunkAccessors(t *testing.T) {
+	pb := &v1.GetChatCompletionChunk{
+		Id:        "c",
+		Citations: []string{"https://a"},
+		Created:   timestamppb.New(time.Unix(1_700_000_000, 0)),
+		Usage:     &v1.SamplingUsage{ServerSideToolsUsed: []v1.ServerSideTool{v1.ServerSideTool_SERVER_SIDE_TOOL_WEB_SEARCH}},
+		Outputs: []*v1.CompletionOutputChunk{
+			{Index: 0, Delta: &v1.Delta{Role: v1.MessageRole_ROLE_ASSISTANT, Content: "Hi", ReasoningContent: " (thinking)", Citations: []*v1.InlineCitation{{Id: "1"}}}},
+			{Index: 1, Delta: &v1.Delta{Role: v1.MessageRole_ROLE_TOOL, Content: "{\"r\":1}"}},
+		},
+	}
+	k := &Chunk{pb: pb, index: allOutputs}
+	if k.Output() != "Hi (thinking)" || k.Content() != "Hi" || len(k.Outputs()) != 1 || len(k.ToolOutputs()) != 1 {
+		t.Errorf("chunk text/outputs: %q %q %d %d", k.Output(), k.Content(), len(k.Outputs()), len(k.ToolOutputs()))
+	}
+	if len(k.Citations()) != 1 || len(k.InlineCitations()) != 1 || k.InlineCitations()[0].GetId() != "1" {
+		t.Errorf("citations: %v %v", k.Citations(), k.InlineCitations())
+	}
+	if k.ServerSideToolUsage()["SERVER_SIDE_TOOL_WEB_SEARCH"] != 1 || k.Created().Unix() != 1_700_000_000 || k.DebugOutput() != nil {
+		t.Errorf("usage/created/debug: %v %v %v", k.ServerSideToolUsage(), k.Created(), k.DebugOutput())
+	}
+	only1 := &Chunk{pb: pb, index: 1}
+	if only1.Output() != "" || len(only1.ToolOutputs()) != 1 {
+		t.Errorf("index filter: %q %d", only1.Output(), len(only1.ToolOutputs()))
+	}
+}

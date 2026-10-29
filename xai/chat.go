@@ -19,18 +19,19 @@ import (
 
 // Re-exported proto types used by the chat surface.
 type (
-	Message          = v1.Message
-	Content          = v1.Content
-	Tool             = v1.Tool
-	ToolCall         = v1.ToolCall
-	FinishReason     = v1.FinishReason
-	MessageRole      = v1.MessageRole
-	SamplingUsage    = v1.SamplingUsage
-	InlineCitation   = v1.InlineCitation
-	CompletionOutput = v1.CompletionOutput
-	LogProbs         = v1.LogProbs
-	RequestSettings  = v1.RequestSettings
-	DebugOutput      = v1.DebugOutput
+	Message               = v1.Message
+	Content               = v1.Content
+	Tool                  = v1.Tool
+	ToolCall              = v1.ToolCall
+	FinishReason          = v1.FinishReason
+	MessageRole           = v1.MessageRole
+	SamplingUsage         = v1.SamplingUsage
+	InlineCitation        = v1.InlineCitation
+	CompletionOutput      = v1.CompletionOutput
+	LogProbs              = v1.LogProbs
+	RequestSettings       = v1.RequestSettings
+	DebugOutput           = v1.DebugOutput
+	CompletionOutputChunk = v1.CompletionOutputChunk
 )
 
 // Chat is a conversation plus request settings. Build it with
@@ -546,6 +547,64 @@ func (c *Chunk) ToolCalls() []*ToolCall {
 	}
 	return calls
 }
+
+// Output returns content and reasoning deltas of this chunk together, in
+// the order they arrived (Python Chunk.output).
+func (c *Chunk) Output() string {
+	var b strings.Builder
+	for _, o := range c.outputs() {
+		b.WriteString(o.GetDelta().GetContent())
+		b.WriteString(o.GetDelta().GetReasoningContent())
+	}
+	return b.String()
+}
+
+// Outputs returns the assistant output chunks this Chunk exposes (one per
+// output index for batch streams).
+func (c *Chunk) Outputs() []*CompletionOutputChunk { return c.outputs() }
+
+// ToolOutputs returns the ROLE_TOOL output chunks of this message: results
+// of server-side tool calls when the request included their outputs.
+func (c *Chunk) ToolOutputs() []*CompletionOutputChunk {
+	var outs []*CompletionOutputChunk
+	for _, o := range c.pb.GetOutputs() {
+		if o.GetDelta().GetRole() != v1.MessageRole_ROLE_TOOL {
+			continue
+		}
+		if c.index == allOutputs || o.GetIndex() == c.index {
+			outs = append(outs, o)
+		}
+	}
+	return outs
+}
+
+// Citations returns the URL citations carried by this chunk.
+func (c *Chunk) Citations() []string { return c.pb.GetCitations() }
+
+// InlineCitations returns the positioned citations in this chunk's deltas.
+func (c *Chunk) InlineCitations() []*InlineCitation {
+	var cites []*InlineCitation
+	for _, o := range c.outputs() {
+		cites = append(cites, o.GetDelta().GetCitations()...)
+	}
+	return cites
+}
+
+// ServerSideToolUsage counts the server-side tools reported in this chunk's
+// usage, keyed by the proto enum name.
+func (c *Chunk) ServerSideToolUsage() map[string]int {
+	counts := map[string]int{}
+	for _, t := range c.pb.GetUsage().GetServerSideToolsUsed() {
+		counts[t.String()]++
+	}
+	return counts
+}
+
+// Created returns the server timestamp of this chunk.
+func (c *Chunk) Created() time.Time { return c.pb.GetCreated().AsTime() }
+
+// DebugOutput returns the server's debug output in this chunk, when any.
+func (c *Chunk) DebugOutput() *DebugOutput { return c.pb.GetDebugOutput() }
 
 func (c *Chunk) outputs() []*v1.CompletionOutputChunk {
 	var outs []*v1.CompletionOutputChunk

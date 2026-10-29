@@ -28,6 +28,7 @@ Every method of the official Python SDK's sync client and where it lives here. N
 | `chat.create(..., conversation_id=)` (telemetry label only) | `WithConversationID(id)` |
 | `Response.cost_usd`, `.created`, `.system_fingerprint`, `.service_tier`, `.logprobs`, `.server_side_tool_usage`, `.request_settings`, `.debug_output` | `CostUSD() (float64, bool)`, `Created()`, `SystemFingerprint()`, `ServiceTier()`, `Logprobs()`, `ServerSideToolUsage()`, `Settings()`, `DebugOutput()` |
 | `Response.image_outputs`, `.tool_outputs` | `Response.ImageOutputs()` (decoded bytes, MIME type, uuid, tool call), `Response.ToolOutputs()` |
+| `Chunk.content`, `.reasoning_content`, `.output`, `.choices`, `.tool_calls`, `.tool_outputs`, `.citations`, `.inline_citations`, `.server_side_tool_usage`, `.created`, `.debug_output` | `Chunk.Content()`, `.ReasoningContent()`, `.Output()`, `.Outputs()`, `.ToolCalls()`, `.ToolOutputs()`, `.Citations()`, `.InlineCitations()`, `.ServerSideToolUsage()`, `.Created()`, `.DebugOutput()` |
 | `files.upload(path_or_bytes, filename=...)` | `Files.UploadFile(ctx, path)`, `Files.UploadBytes(ctx, name, data)`, `Files.Upload(ctx, name, r, size)` |
 | `files.batch_upload(files, batch_size)` | `Files.UploadAll(ctx, paths, concurrency, opts...)` (results in input order, per-file errors) |
 | `files.list(limit, order, sort_by, pagination_token, filter)` | `Files.ListPage(ctx, limit, order, token, WithFilesSortBy/WithFilesFilter...)`; `Files.All(ctx, order, opts...)` walks every page, so bound its context on large accounts |
